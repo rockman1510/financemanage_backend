@@ -34,6 +34,9 @@ cd backend && ./gradlew build        # unit test + kiểm tra ranh giới module
 cd mobile && npm test && npm run typecheck && npm run lint
 ```
 
+Kiểm chứng business flow qua API (curl + jq, 100 kiểm tra): xem [docs/API_TEST_GUIDE.md](docs/API_TEST_GUIDE.md) và
+`scripts/api-flow-test.sh`.
+
 ## Kiến trúc tóm tắt
 
 **Backend – Modular Monolith sẵn sàng tách microservice**
