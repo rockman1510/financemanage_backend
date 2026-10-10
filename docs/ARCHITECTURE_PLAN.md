@@ -110,7 +110,7 @@ Dùng **Spring Modulith** để ép ranh giới module:
 ### 4.1. Stack
 | Thành phần | Lựa chọn |
 |---|---|
-| Ngôn ngữ / Framework | Java 21 (LTS, virtual threads), Spring Boot 3.x |
+| Ngôn ngữ / Framework | Java 21 (LTS, virtual threads), Spring Boot 4.x |
 | Module hoá | Spring Modulith |
 | Persistence | PostgreSQL, Spring Data JPA (+ jOOQ/QueryDSL cho truy vấn báo cáo) |
 | Migration | Flyway |
@@ -212,7 +212,7 @@ Nguyên tắc: tiền dùng `NUMERIC(19,4)` + `BigDecimal` (không dùng double)
 | Thành phần | Lựa chọn |
 |---|---|
 | Nền tảng | Expo (bare/prebuild khi cần native module), TypeScript strict |
-| Điều hướng | React Navigation (hoặc Expo Router) |
+| Điều hướng | Expo Router (file-based, xây trên React Navigation) |
 | Server state | TanStack Query (cache, retry, offline) |
 | Client state | Zustand |
 | Form | React Hook Form + Zod |
@@ -292,3 +292,19 @@ Mỗi feature độc lập → thêm feature mới không ảnh hưởng feature
 | Module dính chặt nhau, khó tách | Spring Modulith verify trong CI, cấm truy cập `internal` |
 | Over-engineering sớm | Monolith trước, chỉ thêm Kafka/K8s khi có số liệu chứng minh |
 | Mất dữ liệu / ghi trùng | Backup tự động, Outbox, Idempotency-Key, optimistic locking |
+
+---
+
+## 11. Trạng thái triển khai (MVP)
+
+Đã hiện thực giai đoạn 0–3 theo kế hoạch trên – xem [README](../README.md):
+
+- **Backend** (`backend/`): modular monolith gồm các module `identity`, `deposit`, `loan`, `notification`, `reporting`
+  cùng `shared-kernel`. Domain viết bằng Java thuần, dùng Strategy cho cách tính lãi và lịch trả nợ. Có outbox cho
+  event, ShedLock cho các job, Flyway riêng cho từng module. Test gồm unit test, kiểm tra ranh giới module và API test
+  chạy trên cả H2 lẫn PostgreSQL (Testcontainers).
+- **Mobile** (`mobile/`): Expo SDK 57 + Expo Router, code tổ chức theo feature. API client tự refresh token, có design
+  tokens, feature flags và i18n vi/en. Test component và logic bằng Jest + React Native Testing Library.
+- **Hạ tầng**: Dockerfile, docker-compose (PostgreSQL + backend) và GitHub Actions CI.
+- **Chưa làm (giai đoạn 5)**: Redis cache phân tán, push notification qua FCM/APNs, Keycloak, đa tiền tệ quy đổi, chia
+  sẻ dữ liệu trong gia đình, tách microservice.

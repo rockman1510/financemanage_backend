@@ -1,0 +1,32 @@
+# Local stack: PostgreSQL + backend.  docker compose up --build
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: financemanage
+      POSTGRES_USER: financemanage
+      POSTGRES_PASSWORD: financemanage
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U financemanage"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/financemanage
+      DB_USERNAME: financemanage
+      DB_PASSWORD: financemanage
+      JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-me-0123456789}
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
