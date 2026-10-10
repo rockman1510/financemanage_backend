@@ -15,7 +15,7 @@ Có 3 cách, từ nhanh đến chi tiết:
 
 ```bash
 cd backend
-rm -f build/devdb*                                    # xoá DB dev cũ để dữ liệu sạch
+rm -f build/devdb.mv.db build/devdb.trace.db         # xoá DB dev cũ để dữ liệu sạch (không có file cũng không sao)
 ./gradlew :app:bootJar
 java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
   --spring.profiles.active=dev \
@@ -26,6 +26,8 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
   bạn thấy kết quả ngay. Chỉ cần khi test mục 8 (job).
+- Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
+  giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
 
 ## 2. Chạy script tự động
@@ -61,7 +63,7 @@ JSON='Content-Type: application/json'
 
 | # | Thao tác | Lệnh | Kỳ vọng |
 |---|---|---|---|
-| A1 | Đăng ký trùng email (viết HOA) | `curl -s -X POST $API/auth/register -H "$JSON" -d "{\"email\":\"${EMAIL^^}\",\"password\":\"secret123\",\"fullName\":\"X\"}"` | `422`, `code=EMAIL_TAKEN` (email không phân biệt hoa thường) |
+| A1 | Đăng ký trùng email (viết HOA) | `curl -s -X POST $API/auth/register -H "$JSON" -d "{\"email\":\"$(echo $EMAIL \| tr a-z A-Z)\",\"password\":\"secret123\",\"fullName\":\"X\"}"` | `422`, `code=EMAIL_TAKEN` (email không phân biệt hoa thường) |
 | A2 | Sai mật khẩu | `curl -si -X POST $API/auth/login -H "$JSON" -d "{\"email\":\"$EMAIL\",\"password\":\"wrong\"}"` | `401` |
 | A3 | Refresh token | `curl -s -X POST $API/auth/refresh -H "$JSON" -d "{\"refreshToken\":\"$(jq -r .refreshToken /tmp/auth.json)\"}"` | `200`, cặp token mới |
 | A4 | Dùng lại refresh token cũ (chạy lại A3) | như A3 | `401`, vì token được xoay vòng và chỉ dùng được 1 lần |
@@ -194,8 +196,10 @@ Kiểm tra con số 4,35tr ở L10. Sau L5 và L7, gốc mỗi kỳ là 5tr:
 Dùng **một user mới** để số liệu không lẫn với các bước trên. Ngày tính theo giờ Việt Nam.
 
 ```bash
-OPEN=$(date -d '-15 days' +%F)          # macOS: date -v-15d +%F
-START=$(date -d '-10 days' +%F)
+# macOS (zsh/bash mặc định):
+OPEN=$(date -v-15d +%F); START=$(date -v-10d +%F)
+# Linux:
+# OPEN=$(date -d '-15 days' +%F); START=$(date -d '-10 days' +%F)
 curl -s -X POST $API/deposits -H "$AUTH" -H "$JSON" -d "{\"institutionName\":\"ACB\",\"type\":\"TERM\",\"principal\":50000000,\"annualRate\":5,\"termMonths\":1,\"openDate\":\"$OPEN\"}" >/dev/null
 curl -s $API/dashboard -H "$AUTH" | jq
 curl -s -X POST $API/loans -H "$AUTH" -H "$JSON" -d "{\"counterpartyName\":\"Bình\",\"direction\":\"BORROW\",\"principal\":20000000,\"termMonths\":1,\"startDate\":\"$START\",\"repaymentMethod\":\"INTEREST_FREE\"}" >/dev/null
@@ -220,7 +224,8 @@ curl -s $API/dashboard -H "$AUTH" | jq
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
 ```bash
-OPENED=$(date -d "$(date -d '-3 days' +%F) -2 months" +%F)
+OPENED=$(date -v-3d -v-2m +%F)                              # macOS
+# OPENED=$(date -d "$(date -d '-3 days' +%F) -2 months" +%F) # Linux
 for p in NONE PRINCIPAL_AND_INTEREST PRINCIPAL_ONLY; do
   curl -s -X POST $API/deposits -H "$AUTH" -H "$JSON" \
     -d "{\"institutionName\":\"$p\",\"type\":\"TERM\",\"principal\":100000000,\"annualRate\":6,\"termMonths\":2,\"openDate\":\"$OPENED\",\"rolloverPolicy\":\"$p\"}" \

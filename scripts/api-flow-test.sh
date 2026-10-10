@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Kiểm chứng business flow qua REST API. Yêu cầu: bash, curl, jq.
+# Kiểm chứng business flow qua REST API. Yêu cầu: bash (kể cả bash 3.2 của macOS), curl, jq.
+# Chạy được từ zsh: script tự dùng bash qua dòng shebang.
 #
 #   BASE_URL=http://localhost:8080 ./scripts/api-flow-test.sh
 #
@@ -68,7 +69,7 @@ check "Có access token" "$( [[ -n "$TOKEN" && "$TOKEN" != null ]] && echo yes)"
 check "Thời hạn access token (giây)" "$(j .expiresInSeconds)" "900"
 
 SAVED=$TOKEN; TOKEN=""
-req POST /auth/register "{\"email\":\"${EMAIL^^}\",\"password\":\"secret123\",\"fullName\":\"X\"}"
+req POST /auth/register "{\"email\":\"$(tr '[:lower:]' '[:upper:]' <<<"$EMAIL")\",\"password\":\"secret123\",\"fullName\":\"X\"}"
 check_status "Đăng ký trùng email (không phân biệt hoa thường)" 422
 check "Mã lỗi" "$(j .code)" "EMAIL_TAKEN"
 
