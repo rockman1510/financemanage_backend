@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'expo-router';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { ApiError } from '@/shared/api/ApiError';
+import { errorMessage } from '@/shared/api/errorMessage';
 import { todayIso } from '@/shared/lib/format';
 import { Button, Card, MoneyText, Row, Screen, SegmentedControl, Text, TextField } from '@/shared/ui';
 import { InstallmentRow } from '../components/InstallmentRow';
@@ -92,7 +92,7 @@ export default function LoanFormScreen() {
         </Card>
       ) : null}
       {create.error ? (
-        <Text tone="negative">{create.error instanceof ApiError ? create.error.message : t('common.unexpectedError')}</Text>
+        <Text tone="negative">{errorMessage(create.error, t)}</Text>
       ) : null}
       <Button title={t('common.preview')} variant="secondary" onPress={onPreview} loading={preview.isPending} />
       <Button title={t('common.save')} onPress={onSave} loading={create.isPending} />

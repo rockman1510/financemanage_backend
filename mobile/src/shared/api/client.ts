@@ -1,6 +1,8 @@
 import { ApiError } from './ApiError';
 import type { TokenPair } from './types';
 
+export const NETWORK_ERROR = 'NETWORK_ERROR';
+
 export interface TokenStore {
   getAccessToken(): string | null;
   getRefreshToken(): string | null;
@@ -39,11 +41,19 @@ export function createApiClient({ baseUrl, tokens, fetchFn = fetch }: ApiClientO
     if (!options.anonymous && accessToken) {
       headers.Authorization = `Bearer ${accessToken}`;
     }
-    return fetchFn(`${baseUrl}${path}`, {
-      method,
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
+    try {
+      return await fetchFn(`${baseUrl}${path}`, {
+        method,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+    } catch (cause) {
+      // fetch only rejects when no HTTP response arrived: wrong URL, server down, firewall, no network
+      if (__DEV__) {
+        console.warn(`[api] ${method} ${baseUrl}${path} failed`, cause);
+      }
+      throw new ApiError(0, { code: NETWORK_ERROR, message: `Cannot reach server at ${baseUrl}` });
+    }
   }
 
   async function refreshTokens(): Promise<boolean> {

@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { ApiError } from '@/shared/api/ApiError';
+import { errorMessage } from '@/shared/api/errorMessage';
 import { newIdempotencyKey, parseAmount } from '@/shared/lib/parse';
 import { Button, Card, Text, TextField } from '@/shared/ui';
 import { paymentSchema, type PaymentValues } from '../schemas';
@@ -39,7 +39,7 @@ export function PaymentForm({ title, defaultAmount, today, pending, error, onSub
           error={fieldState.error?.message && t(fieldState.error.message)} />
       )} />
       {error ? (
-        <Text tone="negative">{error instanceof ApiError ? error.message : t('common.unexpectedError')}</Text>
+        <Text tone="negative">{errorMessage(error, t)}</Text>
       ) : null}
       <Button title={t('common.save')} onPress={submit} loading={pending} />
     </Card>

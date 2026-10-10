@@ -5,6 +5,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { ApiError } from '@/shared/api/ApiError';
+import { errorMessage } from '@/shared/api/errorMessage';
 import { useSession } from '@/shared/session/sessionStore';
 import { Button, Screen, Text, TextField } from '@/shared/ui';
 import { authApi } from '../api';
@@ -25,7 +26,7 @@ export default function LoginScreen() {
       await setTokens(await authApi.login(values.email, values.password));
     } catch (error) {
       setFormError(error instanceof ApiError && error.status === 401 ? t('auth.invalidCredentials')
-        : t('common.unexpectedError'));
+        : errorMessage(error, t));
     }
   });
 

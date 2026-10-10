@@ -112,6 +112,19 @@ describe('createApiClient', () => {
   });
 });
 
+describe('network failures', () => {
+  it('turns a rejected fetch into a NETWORK_ERROR ApiError', async () => {
+    const fetchFn = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const client = createApiClient({ baseUrl: 'http://192.168.1.15:8080', tokens: tokenStore(), fetchFn });
+
+    const error = (await client.get('/x').catch((e: unknown) => e)) as ApiError;
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(0);
+    expect(error.code).toBe('NETWORK_ERROR');
+  });
+});
+
 describe('queryString', () => {
   it('skips empty values and encodes', () => {
     expect(queryString({ status: 'ACTIVE', direction: undefined, q: 'a b' })).toBe('?status=ACTIVE&q=a%20b');

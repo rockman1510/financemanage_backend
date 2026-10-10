@@ -8,6 +8,7 @@ export const en: Translations = {
     retry: 'Retry',
     confirm: 'Confirm',
     unexpectedError: 'Something went wrong, please try again.',
+    networkError: 'Cannot reach the server at {{url}}. Check that the backend is running and EXPO_PUBLIC_API_URL in .env.',
     required: 'Required',
     invalidNumber: 'Invalid number',
     invalidDate: 'Date must be YYYY-MM-DD',

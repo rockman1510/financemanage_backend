@@ -6,6 +6,7 @@ export const vi = {
     retry: 'Thử lại',
     confirm: 'Xác nhận',
     unexpectedError: 'Đã có lỗi xảy ra, vui lòng thử lại.',
+    networkError: 'Không kết nối được máy chủ {{url}}. Kiểm tra backend đang chạy và EXPO_PUBLIC_API_URL trong file .env.',
     required: 'Bắt buộc',
     invalidNumber: 'Số không hợp lệ',
     invalidDate: 'Ngày phải có dạng YYYY-MM-DD',

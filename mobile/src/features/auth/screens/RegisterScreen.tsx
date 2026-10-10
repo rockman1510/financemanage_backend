@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
-import { ApiError } from '@/shared/api/ApiError';
+import { errorMessage } from '@/shared/api/errorMessage';
 import { useSession } from '@/shared/session/sessionStore';
 import { Button, Screen, Text, TextField } from '@/shared/ui';
 import { authApi } from '../api';
@@ -24,7 +24,7 @@ export default function RegisterScreen() {
     try {
       await setTokens(await authApi.register(values.email, values.password, values.fullName));
     } catch (error) {
-      setFormError(error instanceof ApiError ? error.message : t('common.unexpectedError'));
+      setFormError(errorMessage(error, t));
     }
   });
 

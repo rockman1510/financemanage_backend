@@ -38,6 +38,18 @@ describe('LoginScreen', () => {
     expect(login).toHaveBeenCalledWith('an@example.com', 'secret123');
   });
 
+  it('explains when the server cannot be reached', async () => {
+    login.mockRejectedValue(new ApiError(0, { code: 'NETWORK_ERROR', message: 'x' }));
+    const user = userEvent.setup();
+    await render(<LoginScreen />);
+
+    await user.type(screen.getByLabelText('Email'), 'an@example.com');
+    await user.type(screen.getByLabelText('Mật khẩu'), 'secret123');
+    await user.press(screen.getByRole('button', { name: 'Đăng nhập' }));
+
+    expect(await screen.findByText(/Không kết nối được máy chủ http:\/\/localhost:8080/)).toBeOnTheScreen();
+  });
+
   it('shows a friendly message for wrong credentials', async () => {
     login.mockRejectedValue(new ApiError(401, { code: 'INVALID_CREDENTIALS', message: 'x' }));
     const user = userEvent.setup();
