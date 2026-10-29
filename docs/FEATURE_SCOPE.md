@@ -110,15 +110,80 @@ Bổ sung:
 - Đánh dấu đã đọc (từng cái / tất cả), đếm số chưa đọc.
 - **Cài đặt thông báo**: bật/tắt từng loại, giờ nhắc, khung giờ không làm phiền.
 
-## 3. Thứ tự triển khai
+## 3. Lịch trình triển khai
 
-1. `ledger`: ví, giao dịch, danh mục, giao dịch định kỳ; `currency` (đa tiền tệ). Đây là nền cho mọi module sau.
-2. `identity` mở rộng: xác thực email, mật khẩu, Google, thiết bị, hồ sơ, xoá tài khoản, 2FA.
-3. `budget` và `bill`.
-4. `notification`: Expo Push, loại thông báo mới, cài đặt thông báo.
-5. `saving` (mở rộng) và nối `deposit` với ví.
-6. `investment` (MVP).
-7. `reporting`: báo cáo thu/chi đầy đủ, tài sản ròng mới, xuất CSV.
+Mỗi giai đoạn là **một pull request** riêng. PR chỉ xong khi: CI xanh, có unit test cho domain, API test (H2 và
+PostgreSQL), `ModularityTests` qua, cập nhật `docs/API_TEST_GUIDE.md` + `scripts/api-flow-test.sh`, và cập nhật cột
+trạng thái ở mục 1. Giai đoạn sau chỉ bắt đầu khi PR trước đã được review.
+
+Thời gian ước tính tính theo **1 lập trình viên toàn thời gian**, để tham khảo độ lớn công việc.
+
+| GĐ | Nội dung | Phụ thuộc | Ước tính |
+|---|---|---|---|
+| 1 | Ledger (ví, giao dịch, danh mục, định kỳ) + đa tiền tệ | – | 2–3 tuần |
+| 2 | Đăng ký/đăng nhập mở rộng | 1 | 2 tuần |
+| 3 | Ngân sách + Hoá đơn | 1 | 1,5–2 tuần |
+| 4 | Thông báo MVP | 2, 3 | 1–1,5 tuần |
+| 5 | Tiết kiệm (mở rộng) + nối tiền gửi với ví | 1, 4 | 1,5–2 tuần |
+| 6 | Đầu tư MVP | 1 | 1,5 tuần |
+| 7 | Báo cáo và thống kê | 1–6 | 2 tuần |
+| 8 | Hoàn thiện và triển khai lên VPS | 1–7 | 1 tuần |
+| | **Tổng** | | **~13–16 tuần** |
+
+### GĐ 1 – Ledger + Đa tiền tệ
+- Thêm named interface `identity.api` với event `UserRegistered` (hiện `identity` chưa phát event nào), để `ledger`
+  tạo danh mục mặc định cho người dùng mới.
+- Module `ledger`, schema `ledger`: bảng `wallet`, `category`, `transaction`, `recurring_transaction`, `attachment`.
+  - API: CRUD ví, điều chỉnh số dư, chuyển tiền giữa ví (kể cả khác tiền tệ); CRUD danh mục (có danh mục con);
+    CRUD giao dịch có lọc + phân trang; CRUD giao dịch định kỳ; đính kèm ảnh hoá đơn qua port `FileStorage` (adapter
+    lưu đĩa local).
+  - Ghi giao dịch dùng Idempotency-Key; số dư ví cập nhật cùng transaction, có optimistic locking.
+  - Event trong `ledger.api`: `TransactionRecorded/Updated/Deleted`, `TransferMade`.
+  - Job `RecurringTransactionJob` (ShedLock).
+- Module `currency`, schema `currency`: bảng `exchange_rate`; API nhập/xem tỷ giá; `CurrencyConversionApi` cho module
+  khác; port `ExchangeRateProvider` (mặc định chỉ dùng tỷ giá nhập tay) + job làm mới tỷ giá.
+
+### GĐ 2 – Đăng ký/đăng nhập mở rộng
+- Port `EmailSender` (adapter log cho local, adapter SMTP/HTTP cho production).
+- Xác thực email (OTP), quên mật khẩu + đặt lại, đổi mật khẩu (thu hồi các phiên khác).
+- Rate limit + tạm khoá khi đăng nhập sai (bộ nhớ, đổi sang Redis bằng cấu hình).
+- Đăng nhập Google: `POST /api/v1/auth/google` nhận ID token, xác thực chữ ký + `aud`, tạo/liên kết tài khoản.
+- Quản lý phiên/thiết bị: liệt kê, đăng xuất từ xa (gắn thông tin thiết bị vào refresh token).
+- Hồ sơ: tiền tệ mặc định, ngôn ngữ, múi giờ, ngày bắt đầu tháng; phát `UserProfileChanged`.
+- 2FA TOTP: bật/tắt, mã khôi phục, bước xác thực thứ hai khi đăng nhập.
+- Xoá tài khoản: phát `UserDeleted`; mọi module (cả `deposit`, `loan`, `notification` hiện có) nghe event và tự xoá
+  dữ liệu.
+
+### GĐ 3 – Ngân sách + Hoá đơn
+- Module `budget`: ngân sách một/nhiều danh mục, theo kỳ hoặc khoảng tuỳ chọn, lặp lại; đã chi/còn lại/gợi ý mỗi ngày;
+  nghe event giao dịch của `ledger`; phát `BudgetThresholdReached` (80%, 100%).
+- Module `bill`: hoá đơn định kỳ; thanh toán (gửi lệnh ghi giao dịch sang `ledger` qua event, có bù trừ), bỏ qua kỳ;
+  job phát `BillDueSoon` / `BillOverdue`.
+
+### GĐ 4 – Thông báo MVP
+- Đăng ký/huỷ push token theo thiết bị; adapter `NotificationSender` gửi qua Expo Push (giữ adapter log cho local).
+- Loại thông báo mới: ngân sách, hoá đơn, mục tiêu tiết kiệm, nhắc ghi chép hằng ngày (job theo múi giờ người dùng).
+- Đánh dấu đã đọc (từng cái/tất cả), đếm chưa đọc.
+- Cài đặt: bật/tắt theo loại, giờ nhắc, khung giờ không làm phiền.
+
+### GĐ 5 – Tiết kiệm (mở rộng)
+- Module `saving`: mục tiêu, nạp/rút từ ví theo luồng event + bù trừ với `ledger`; tiến độ và gợi ý mức để dành;
+  trích tiền định kỳ (job); round-up khi nghe giao dịch chi; event đạt mốc 50%/100%.
+- Nối `deposit` với ví: mở sổ trừ tiền ví, tất toán cộng gốc + lãi vào ví (qua event, tuỳ chọn chọn ví).
+
+### GĐ 6 – Đầu tư MVP
+- Module `investment`: tài sản, giao dịch mua/bán (trả/nhận tiền qua ví bằng event), giá vốn bình quân, lãi/lỗ đã
+  chốt/chưa chốt, cổ tức/coupon; nhập giá tay qua port `PriceProvider`; `InvestmentQueryApi` cho báo cáo.
+
+### GĐ 7 – Báo cáo và thống kê
+- Read model riêng của `reporting`, dựng từ event của `ledger` (không gọi đồng bộ cho dữ liệu thu/chi).
+- Báo cáo thu/chi theo kỳ, theo danh mục, so sánh kỳ; dòng tiền; tài sản ròng gồm ví, tiết kiệm, tiền gửi, đầu tư,
+  cho vay, đi vay, quy đổi về tiền tệ mặc định; xuất CSV.
+- Cache dashboard chuyển sang Redis được bằng cấu hình.
+
+### GĐ 8 – Hoàn thiện và triển khai (phương án A)
+- `docker-compose.prod.yml`, Caddy/Nginx + HTTPS, biến môi trường/secret, backup PostgreSQL tự động ra object storage.
+- Kiểm tra hiệu năng các truy vấn chính (index), Actuator/Prometheus, hướng dẫn deploy lên VPS trong `docs/`.
 
 ## 4. Nguyên tắc để sau này tách thành hệ thống phân tán dễ dàng
 
