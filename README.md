@@ -7,7 +7,7 @@
 |---|---|
 | [`backend/`](backend) | Java 21 · Spring Boot 4 · Spring Modulith (modular monolith) · PostgreSQL · Flyway |
 | [`mobile/`](mobile) | React Native · Expo SDK 57 · Expo Router · TanStack Query · Zustand · React Hook Form + Zod |
-| [`docs/`](docs) | Kế hoạch kiến trúc |
+| [`docs/`](docs) | Kế hoạch kiến trúc, [phạm vi tính năng mở rộng](docs/FEATURE_SCOPE.md) |
 | `docker-compose.yml` | PostgreSQL + backend để chạy local |
 | `.github/workflows/ci.yml` | CI: build/test backend, typecheck/lint/test mobile |
 
