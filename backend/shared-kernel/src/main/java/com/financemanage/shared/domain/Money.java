@@ -21,7 +21,16 @@ public record Money(BigDecimal amount, Currency currency) implements Comparable<
     }
 
     public static Money of(BigDecimal amount, String currencyCode) {
-        return new Money(amount, Currency.getInstance(currencyCode));
+        return new Money(amount, currency(currencyCode));
+    }
+
+    /** Resolves an ISO 4217 code; an unknown code is a business error (HTTP 422) rather than a server error. */
+    public static Currency currency(String currencyCode) {
+        try {
+            return Currency.getInstance(currencyCode);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new DomainException("INVALID_CURRENCY", "Unknown currency " + currencyCode);
+        }
     }
 
     public static Money of(String amount, String currencyCode) {
@@ -52,6 +61,15 @@ public record Money(BigDecimal amount, Currency currency) implements Comparable<
 
     public Money dividedBy(int divisor) {
         return new Money(amount.divide(BigDecimal.valueOf(divisor), CALC_SCALE, ROUNDING), currency);
+    }
+
+    public Money negated() {
+        return new Money(amount.negate(), currency);
+    }
+
+    /** True when the amount has no more decimals than the currency allows, e.g. 1000 VND or 10.25 USD. */
+    public boolean hasMinorUnitPrecision() {
+        return amount.stripTrailingZeros().scale() <= Math.max(currency.getDefaultFractionDigits(), 0);
     }
 
     public Money min(Money other) {

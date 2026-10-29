@@ -4,13 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,9 +23,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
 /** End-to-end tests through HTTP, security, JSON mapping, persistence (H2 in PostgreSQL mode) and Flyway. */
 @SpringBootTest
@@ -43,6 +49,7 @@ class ApiIntegrationTest {
     @Test
     void rejectsUnauthenticatedRequests() throws Exception {
         mvc.perform(get("/api/v1/deposits")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/wallets")).andExpect(status().isUnauthorized());
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 
@@ -200,6 +207,216 @@ class ApiIntegrationTest {
 
         mvc.perform(auth(get("/api/v1/notifications"))).andExpect(status().isOk());
         mvc.perform(auth(get("/api/v1/notifications/unread-count"))).andExpect(jsonPath("$.count").isNumber());
+    }
+
+    @Test
+    void walletsCategoriesAndTransactions() throws Exception {
+        String categories = mvc.perform(auth(get("/api/v1/categories")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(JsonPath.<List<Object>>read(categories, "$").size()).isGreaterThan(20);
+        String food = categoryId(categories, "FOOD");
+        String salary = categoryId(categories, "SALARY");
+
+        String cash = createWallet("Tiền mặt", "CASH", "VND", 1_000_000);
+        String bank = createWallet("Vietcombank", "BANK_ACCOUNT", "VND", 5_000_000);
+
+        String lunch = "{\"walletId\":\"%s\",\"categoryId\":\"%s\",\"amount\":50000,\"note\":\"Phở bò\"}"
+                .formatted(cash, food);
+        String first = mvc.perform(auth(json(post("/api/v1/transactions"), lunch)).header("Idempotency-Key", "tx-1"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.type").value("EXPENSE"))
+                .andExpect(jsonPath("$.occurredOn").value(today.toString()))
+                .andReturn().getResponse().getContentAsString();
+        String replay = mvc.perform(auth(json(post("/api/v1/transactions"), lunch)).header("Idempotency-Key", "tx-1"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String lunchId = JsonPath.read(first, "$.id");
+        assertThat((String) JsonPath.read(replay, "$.id")).isEqualTo(lunchId);
+        expectBalance(cash, 950_000);
+
+        mvc.perform(auth(json(post("/api/v1/transactions"), """
+                {"walletId":"%s","categoryId":"%s","amount":20000000,"occurredOn":"%s"}"""
+                .formatted(bank, salary, today.minusDays(3))))).andExpect(status().isCreated());
+
+        mvc.perform(auth(get("/api/v1/transactions?walletId=" + cash)))
+                .andExpect(jsonPath("$.items", hasSize(1))).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(auth(get("/api/v1/transactions?type=INCOME"))).andExpect(jsonPath("$.items", hasSize(1)));
+        mvc.perform(auth(get("/api/v1/transactions?q=phở"))).andExpect(jsonPath("$.items", hasSize(1)));
+        mvc.perform(auth(get("/api/v1/transactions?from=" + today.minusDays(1))))
+                .andExpect(jsonPath("$.items", hasSize(1)));
+        mvc.perform(auth(get("/api/v1/transactions?size=1&page=1")))
+                .andExpect(jsonPath("$.items", hasSize(1))).andExpect(jsonPath("$.totalPages").value(2));
+        mvc.perform(auth(get("/api/v1/transactions/summary")))
+                .andExpect(jsonPath("$[0].income").value(20_000_000))
+                .andExpect(jsonPath("$[0].expense").value(50_000))
+                .andExpect(jsonPath("$[0].net").value(19_950_000));
+
+        mvc.perform(auth(json(patch("/api/v1/transactions/" + lunchId),
+                        "{\"walletId\":\"%s\",\"amount\":80000,\"note\":\"\"}".formatted(bank))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.walletId").value(bank))
+                .andExpect(jsonPath("$.note").doesNotExist());
+        expectBalance(cash, 1_000_000);
+        expectBalance(bank, 24_920_000);
+
+        mvc.perform(auth(delete("/api/v1/transactions/" + lunchId))).andExpect(status().isNoContent());
+        expectBalance(bank, 25_000_000);
+
+        mvc.perform(auth(json(post("/api/v1/wallets/" + cash + "/adjust-balance"), "{\"newBalance\":1200000}")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.wallet.balance").value(1_200_000))
+                .andExpect(jsonPath("$.transaction.type").value("ADJUSTMENT_IN"));
+
+        mvc.perform(auth(delete("/api/v1/wallets/" + bank)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("WALLET_HAS_TRANSACTIONS"));
+        mvc.perform(auth(json(patch("/api/v1/wallets/" + bank), "{\"archived\":true}")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.archived").value(true));
+        mvc.perform(auth(get("/api/v1/wallets"))).andExpect(jsonPath("$", hasSize(1)));
+        mvc.perform(auth(get("/api/v1/wallets?includeArchived=true"))).andExpect(jsonPath("$", hasSize(2)));
+        mvc.perform(auth(json(post("/api/v1/transactions"), lunch.replace(cash, bank))))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("WALLET_ARCHIVED"));
+
+        String snack = mvc.perform(auth(json(post("/api/v1/categories"),
+                        "{\"name\":\"Ăn vặt\",\"type\":\"EXPENSE\",\"parentId\":\"%s\"}".formatted(food))))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.parentId").value(food))
+                .andReturn().getResponse().getContentAsString();
+        mvc.perform(auth(delete("/api/v1/categories/" + food)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("CATEGORY_HAS_CHILDREN"));
+        mvc.perform(auth(delete("/api/v1/categories/" + JsonPath.read(snack, "$.id"))))
+                .andExpect(status().isNoContent());
+
+        mvc.perform(auth(json(post("/api/v1/transactions"), "{\"walletId\":\"%s\",\"amount\":-1}".formatted(cash))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.amount").exists())
+                .andExpect(jsonPath("$.fieldErrors.categoryId").exists());
+        String stranger = register(UUID.randomUUID() + "@example.com");
+        mvc.perform(auth(get("/api/v1/wallets/" + cash), stranger)).andExpect(status().isNotFound());
+        mvc.perform(auth(get("/api/v1/transactions"), stranger)).andExpect(jsonPath("$.items", hasSize(0)));
+    }
+
+    @Test
+    void transfersBetweenCurrenciesUseExchangeRates() throws Exception {
+        String cash = createWallet("Tiền mặt", "CASH", "VND", 1_000_000);
+        String usd = createWallet("Đô la", "CASH", "USD", 0);
+        String transfer = "{\"fromWalletId\":\"%s\",\"toWalletId\":\"%s\",\"amount\":500000}".formatted(cash, usd);
+
+        mvc.perform(auth(json(post("/api/v1/transfers"), transfer)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("EXCHANGE_RATE_MISSING"));
+
+        String rate = mvc.perform(auth(json(post("/api/v1/exchange-rates"),
+                        "{\"base\":\"USD\",\"quote\":\"VND\",\"rate\":25000}")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rate").value(25000))
+                .andExpect(jsonPath("$.effectiveDate").value(today.toString()))
+                .andReturn().getResponse().getContentAsString();
+        mvc.perform(auth(get("/api/v1/exchange-rates/convert?amount=10&from=USD&to=VND")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.converted").value(250000));
+        mvc.perform(auth(get("/api/v1/exchange-rates/convert?amount=10&from=USD&to=XYZ")))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("INVALID_CURRENCY"));
+
+        String made = mvc.perform(auth(json(post("/api/v1/transfers"), transfer)).header("Idempotency-Key", "tr-1"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.out.type").value("TRANSFER_OUT"))
+                .andExpect(jsonPath("$.in.amount").value(20))
+                .andExpect(jsonPath("$.in.currency").value("USD"))
+                .andReturn().getResponse().getContentAsString();
+        String transferId = JsonPath.read(made, "$.transferId");
+        String replay = mvc.perform(auth(json(post("/api/v1/transfers"), transfer)).header("Idempotency-Key", "tr-1"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        assertThat((String) JsonPath.read(replay, "$.transferId")).isEqualTo(transferId);
+        expectBalance(cash, 500_000);
+        expectBalance(usd, 20);
+
+        mvc.perform(auth(get("/api/v1/wallets/total?currency=VND")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").value(1_000_000))
+                .andExpect(jsonPath("$.wallets", hasSize(2)))
+                .andExpect(jsonPath("$.missingRates", hasSize(0)));
+        mvc.perform(auth(get("/api/v1/transactions/summary"))).andExpect(jsonPath("$", hasSize(0)));
+
+        mvc.perform(auth(delete("/api/v1/transfers/" + transferId))).andExpect(status().isNoContent());
+        expectBalance(cash, 1_000_000);
+        expectBalance(usd, 0);
+
+        mvc.perform(auth(get("/api/v1/exchange-rates?base=USD"))).andExpect(jsonPath("$", hasSize(1)));
+        mvc.perform(auth(delete("/api/v1/exchange-rates/" + JsonPath.read(rate, "$.id"))))
+                .andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/exchange-rates"))).andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void recurringTransactionsAndAttachments() throws Exception {
+        String bank = createWallet("Techcombank", "BANK_ACCOUNT", "VND", 50_000_000);
+        String rent = categoryId(mvc.perform(auth(get("/api/v1/categories?type=EXPENSE")))
+                .andReturn().getResponse().getContentAsString(), "BILLS_RENT");
+
+        String rule = mvc.perform(auth(json(post("/api/v1/recurring-transactions"), """
+                        {"walletId":"%s","categoryId":"%s","amount":5000000,"note":"Tiền nhà","frequency":"MONTHLY",
+                         "startDate":"%s"}""".formatted(bank, rent, today.minusMonths(2)))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.generatedCount").value(3))
+                .andExpect(jsonPath("$.active").value(true))
+                .andReturn().getResponse().getContentAsString();
+        String ruleId = JsonPath.read(rule, "$.id");
+        String generated = mvc.perform(auth(get("/api/v1/transactions?walletId=" + bank)))
+                .andExpect(jsonPath("$.items", hasSize(3)))
+                .andExpect(jsonPath("$.items[0].recurringId").value(ruleId))
+                .andReturn().getResponse().getContentAsString();
+        expectBalance(bank, 35_000_000);
+
+        mvc.perform(auth(json(patch("/api/v1/recurring-transactions/" + ruleId), "{\"active\":false}")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false));
+        mvc.perform(auth(delete("/api/v1/recurring-transactions/" + ruleId))).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/recurring-transactions"))).andExpect(jsonPath("$", hasSize(0)));
+
+        String txId = JsonPath.read(generated, "$.items[0].id");
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G'};
+        String uploaded = mvc.perform(upload(txId, new MockMultipartFile("file", "hoa-don.png", "image/png", png)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.fileName").value("hoa-don.png"))
+                .andExpect(jsonPath("$.size").value(4))
+                .andReturn().getResponse().getContentAsString();
+        String attachmentId = JsonPath.read(uploaded, "$.id");
+        mvc.perform(upload(txId, new MockMultipartFile("file", "x.exe", "application/octet-stream", png)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("ATTACHMENT_TYPE_NOT_ALLOWED"));
+
+        mvc.perform(auth(get("/api/v1/transactions/" + txId))).andExpect(jsonPath("$.attachments", hasSize(1)));
+        mvc.perform(auth(get("/api/v1/attachments/" + attachmentId)))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "image/png"))
+                .andExpect(content().bytes(png));
+        String stranger = register(UUID.randomUUID() + "@example.com");
+        mvc.perform(auth(get("/api/v1/attachments/" + attachmentId), stranger)).andExpect(status().isNotFound());
+
+        mvc.perform(auth(delete("/api/v1/attachments/" + attachmentId))).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/attachments/" + attachmentId))).andExpect(status().isNotFound());
+    }
+
+    private String createWallet(String name, String type, String currency, long initialBalance) throws Exception {
+        String response = mvc.perform(auth(json(post("/api/v1/wallets"), """
+                        {"name":"%s","type":"%s","currency":"%s","initialBalance":%d}"""
+                        .formatted(name, type, currency, initialBalance))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.balance").value(initialBalance))
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(response, "$.id");
+    }
+
+    private MockMultipartHttpServletRequestBuilder upload(String transactionId, MockMultipartFile file) {
+        return multipart("/api/v1/transactions/" + transactionId + "/attachments").file(file)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+    }
+
+    private void expectBalance(String walletId, long balance) throws Exception {
+        mvc.perform(auth(get("/api/v1/wallets/" + walletId))).andExpect(jsonPath("$.balance").value(balance));
+    }
+
+    private static String categoryId(String categoriesJson, String code) {
+        List<String> ids = JsonPath.read(categoriesJson, "$[?(@.code=='" + code + "')].id");
+        return ids.getFirst();
     }
 
     private String register(String email) throws Exception {

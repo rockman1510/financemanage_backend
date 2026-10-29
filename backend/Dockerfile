@@ -10,7 +10,9 @@ RUN ./gradlew :app:bootJar --no-daemon -x test
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-RUN useradd --system --uid 1001 app
+RUN useradd --system --uid 1001 app \
+    && mkdir -p /app/data/attachments && chown -R app /app/data
+ENV ATTACHMENTS_DIR=/app/data/attachments
 COPY --from=build /workspace/app/build/libs/*.jar app.jar
 USER app
 EXPOSE 8080

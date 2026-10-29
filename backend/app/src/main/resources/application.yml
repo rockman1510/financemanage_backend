@@ -18,7 +18,7 @@ spring:
         default_batch_fetch_size: 50
   flyway:
     # every module ships its own scripts under db/migration/<module> (version ranges: common 1-99,
-    # identity 100+, deposit 200+, loan 300+, notification 400+)
+    # identity 100+, deposit 200+, loan 300+, notification 400+, ledger 500+, currency 600+)
     locations: classpath:db/migration
     out-of-order: true
   modulith:
@@ -27,6 +27,10 @@ spring:
         schema-initialization:
           enabled: true
       republish-outstanding-events-on-restart: true
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   cache:
     type: simple
     cache-names: dashboard
@@ -47,6 +51,13 @@ app:
   loan:
     reminder-days-before: 3
     reminder-cron: "0 15 0 * * *"
+  ledger:
+    recurring-cron: "0 30 0 * * *"
+    attachments:
+      directory: ${ATTACHMENTS_DIR:./data/attachments}
+      max-size: 5MB
+  currency:
+    refresh-cron: "0 0 6 * * *"
   reporting:
     upcoming-days: 30
     projection-months: 12

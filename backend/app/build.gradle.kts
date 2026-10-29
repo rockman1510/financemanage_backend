@@ -9,6 +9,8 @@ dependencies {
     implementation(project(":modules:loan"))
     implementation(project(":modules:notification"))
     implementation(project(":modules:reporting"))
+    implementation(project(":modules:ledger"))
+    implementation(project(":modules:currency"))
 
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-flyway")

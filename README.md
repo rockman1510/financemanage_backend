@@ -34,7 +34,7 @@ cd backend && ./gradlew build        # unit test + kiểm tra ranh giới module
 cd mobile && npm test && npm run typecheck && npm run lint
 ```
 
-Kiểm chứng business flow qua API (curl + jq, 100 kiểm tra): xem [docs/API_TEST_GUIDE.md](docs/API_TEST_GUIDE.md) và
+Kiểm chứng business flow qua API (curl + jq, 144 kiểm tra): xem [docs/API_TEST_GUIDE.md](docs/API_TEST_GUIDE.md) và
 `scripts/api-flow-test.sh`.
 
 ## Kiến trúc tóm tắt
@@ -46,6 +46,8 @@ backend/
 ├─ shared-kernel/        Money, Percentage, CashFlowItem, xử lý lỗi, CurrentUser (module OPEN)
 ├─ modules/
 │  ├─ identity/          Đăng ký/đăng nhập, JWT (HS256), refresh token xoay vòng
+│  ├─ ledger/            Ví, danh mục, giao dịch thu chi, chuyển tiền, giao dịch định kỳ, ảnh hoá đơn
+│  ├─ currency/          Tỷ giá (nhập tay hoặc provider) và quy đổi tiền tệ
 │  ├─ deposit/           Tiền gửi: domain thuần Java + Strategy tính lãi, JPA adapter, REST, job đáo hạn
 │  ├─ loan/              Vay nợ: Strategy lịch trả nợ, trả nợ idempotent, trả trước hạn, lãi thả nổi, job nhắc nợ
 │  ├─ notification/      Lắng nghe domain event → tạo thông báo (port NotificationSender)
@@ -55,7 +57,7 @@ backend/
 
 - Mỗi module theo **Hexagonal**: `domain` (Java thuần) → `application` (use case) → `infrastructure` (web, persistence, scheduler).
 - Module chỉ giao tiếp qua **named interface `api`** (query facade + domain event); `ModularityTests` làm build fail nếu vi phạm.
-- Mỗi module sở hữu **schema DB riêng** (`identity`, `deposit`, `loan`, `notification`) và migration riêng.
+- Mỗi module sở hữu **schema DB riêng** (`identity`, `ledger`, `currency`, `deposit`, `loan`, `notification`) và migration riêng.
 - Event giữa module dùng `@ApplicationModuleListener` + **Event Publication Registry (outbox JDBC)** → đổi sang Kafka khi tách service mà không sửa nghiệp vụ.
 
 **Mobile – tổ chức theo feature**

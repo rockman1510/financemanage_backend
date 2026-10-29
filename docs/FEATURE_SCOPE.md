@@ -15,14 +15,14 @@ Mức độ: **MVP** là bản tối thiểu, **Mở rộng** là bản đầy �
 
 | # | Tính năng | Mức độ | Module | Trạng thái |
 |---|---|---|---|---|
-| 1 | Quản lý ví (tự nhập, không kết nối ngân hàng) | MVP | `ledger` (mới) | Chưa làm |
-| 2 | Ghi chép giao dịch | MVP | `ledger` (mới) | Chưa làm |
+| 1 | Quản lý ví (tự nhập, không kết nối ngân hàng) | MVP | `ledger` | Xong (GĐ 1) |
+| 2 | Ghi chép giao dịch | MVP | `ledger` | Xong (GĐ 1) |
 | 3 | Ngân sách | MVP | `budget` (mới) | Chưa làm |
 | 4 | Hoá đơn | MVP | `bill` (mới) | Chưa làm |
 | 5 | Tiết kiệm | **Mở rộng** (bỏ mục tiêu chung gia đình) | `saving` (mới) + `deposit` (đã có) | Một phần (sổ tiết kiệm) |
 | 6 | Đầu tư | MVP | `investment` (mới) | Chưa làm |
 | 7 | Báo cáo và thống kê | MVP | `reporting` (đã có) | Một phần (dashboard tiền gửi/vay nợ) |
-| 8 | Đa tiền tệ | MVP | `currency` (mới) hoặc trong `ledger` | Chưa làm |
+| 8 | Đa tiền tệ | MVP | `currency` | Xong (GĐ 1); nguồn tỷ giá tự động chưa có provider |
 | 9 | Đăng ký và đăng nhập | **Mở rộng** (Google, không làm Apple) | `identity` (đã có) | Một phần |
 | 10 | Hệ thống thông báo | MVP | `notification` (đã có) | Một phần (in-app) |
 
@@ -39,7 +39,7 @@ Vay nợ (`loan`) đã có từ trước và giữ nguyên.
 - Thẻ tín dụng: hạn mức, ngày sao kê, ngày đến hạn thanh toán.
 
 ### 2.2. Ghi chép giao dịch
-- Thu/chi gồm: số tiền, ví, danh mục, ngày, ghi chú, người liên quan, ảnh hoá đơn (lưu file qua port `FileStorage`).
+- Thu/chi gồm: số tiền, ví, danh mục, ngày, ghi chú, người liên quan, ảnh hoá đơn (lưu file qua port `AttachmentStorage`).
 - **Danh mục**: bộ mặc định khi đăng ký, người dùng tự thêm/sửa, hỗ trợ danh mục con.
 - **Giao dịch định kỳ**: lịch lặp (ngày/tuần/tháng/năm), job sinh giao dịch đến hạn.
 - Tìm kiếm và lọc theo khoảng thời gian, ví, danh mục, số tiền, từ khoá. Phân trang.
@@ -133,12 +133,14 @@ Thời gian ước tính tính theo **1 lập trình viên toàn thời gian**, 
 ### GĐ 1 – Ledger + Đa tiền tệ
 - Thêm named interface `identity.api` với event `UserRegistered` (hiện `identity` chưa phát event nào), để `ledger`
   tạo danh mục mặc định cho người dùng mới.
-- Module `ledger`, schema `ledger`: bảng `wallet`, `category`, `transaction`, `recurring_transaction`, `attachment`.
+- Module `ledger`, schema `ledger`: bảng `wallet`, `category`, `money_transaction`, `recurring_transaction`,
+  `attachment`.
   - API: CRUD ví, điều chỉnh số dư, chuyển tiền giữa ví (kể cả khác tiền tệ); CRUD danh mục (có danh mục con);
-    CRUD giao dịch có lọc + phân trang; CRUD giao dịch định kỳ; đính kèm ảnh hoá đơn qua port `FileStorage` (adapter
-    lưu đĩa local).
+    CRUD giao dịch có lọc + phân trang; CRUD giao dịch định kỳ; đính kèm ảnh hoá đơn qua port `AttachmentStorage`
+    (adapter lưu đĩa local).
   - Ghi giao dịch dùng Idempotency-Key; số dư ví cập nhật cùng transaction, có optimistic locking.
-  - Event trong `ledger.api`: `TransactionRecorded/Updated/Deleted`, `TransferMade`.
+  - Event trong `ledger.api`: `TransactionRecorded/Updated/Deleted` (mỗi vế chuyển tiền là một giao dịch),
+    `WalletChanged/WalletDeleted`.
   - Job `RecurringTransactionJob` (ShedLock).
 - Module `currency`, schema `currency`: bảng `exchange_rate`; API nhập/xem tỷ giá; `CurrencyConversionApi` cho module
   khác; port `ExchangeRateProvider` (mặc định chỉ dùng tỷ giá nhập tay) + job làm mới tỷ giá.

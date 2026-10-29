@@ -309,5 +309,9 @@ Mỗi feature độc lập → thêm feature mới không ảnh hưởng feature
 - **Chưa làm (giai đoạn 5)**: Redis cache phân tán, push notification qua FCM/APNs, Keycloak, đa tiền tệ quy đổi, chia
   sẻ dữ liệu trong gia đình, tách microservice.
 
+- **Giai đoạn 1 của phạm vi mở rộng (xong)**: module `ledger` (ví, danh mục, giao dịch thu chi, chuyển tiền, giao dịch
+  định kỳ, ảnh hoá đơn) và `currency` (tỷ giá, quy đổi). `identity` phát event `UserRegistered` để tạo danh mục mặc
+  định.
+
 Phạm vi giai đoạn tiếp theo (ví, giao dịch, ngân sách, hoá đơn, tiết kiệm, đầu tư, đa tiền tệ, đăng nhập mở rộng,
 thông báo) được chốt trong [FEATURE_SCOPE.md](FEATURE_SCOPE.md). Chia sẻ dữ liệu trong gia đình đã bị loại khỏi phạm vi.

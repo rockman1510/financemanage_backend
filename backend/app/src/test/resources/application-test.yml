@@ -11,3 +11,9 @@ app:
     maturity-cron: "-"
   loan:
     reminder-cron: "-"
+  ledger:
+    recurring-cron: "-"
+    attachments:
+      directory: build/test-attachments
+  currency:
+    refresh-cron: "-"
