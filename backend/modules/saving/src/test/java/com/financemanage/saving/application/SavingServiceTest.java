@@ -127,6 +127,11 @@ class SavingServiceTest {
         }
 
         @Override
+        public List<TransactionSnapshot> transactions(UUID ownerId) {
+            return List.of();
+        }
+
+        @Override
         public List<Money> expenseTotals(UUID ownerId, Set<UUID> categoryIds, UUID walletId, LocalDate from,
                                          LocalDate to) {
             return List.of();

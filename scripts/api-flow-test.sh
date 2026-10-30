@@ -562,7 +562,51 @@ req DELETE "/investments/$BTC"
 check_status "Xoá tài sản" 204
 
 # =====================================================================================
-section "17. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
+section "17. Báo cáo: thu chi theo kỳ, danh mục, dòng tiền, tài sản ròng, CSV"
+register "report$RUN_ID@example.com"
+req POST /wallets '{"name":"Tiền mặt","type":"CASH","initialBalance":10000000}'
+RW=$(j .id)
+CATS=$(curl -s "$API/categories" -H "Authorization: Bearer $TOKEN")
+cat_id() { jq -r --arg c "$1" '.[] | select(.code==$c) | .id' <<<"$CATS"; }
+LAST_MONTH=$(minus_month "$(date +%Y-%m-01)")
+tx() { req POST /transactions "{\"walletId\":\"$RW\",\"categoryId\":\"$(cat_id "$1")\",\"amount\":$2,\"occurredOn\":\"$3\"}"; }
+tx SALARY 20000000 "$(today)"
+tx FOOD 3000000 "$(today)"
+tx FOOD_COFFEE 1000000 "$(today)"
+tx TRANSPORT 500000 "$(today)"
+TAXI=$(j .id)
+tx FOOD 2000000 "$LAST_MONTH"
+req DELETE "/transactions/$TAXI"
+for _ in $(seq 1 10); do req GET /reports/summary; [[ "$(j '.expense+0')" == "4000000" ]] && break; sleep 1; done
+check "Tổng thu chi tháng này (khoản đã xoá không tính)" "$(j '"\(.income+0)|\(.expense+0)|\(.net+0)|\(.savingsRate+0)"')" "20000000|4000000|16000000|80"
+check "So với tháng trước: chi tăng 100%" "$(j '"\(.previous.expense+0)|\(.expenseChange+0)"')" "2000000|100"
+req GET /reports/categories
+check "Chi theo danh mục, danh mục con gộp vào cha" \
+  "$(j '"\(.total+0)|\(.categories[0].name)|\(.categories[0].percent+0)|\(.categories[0].children[0].name)|\(.categories[0].children[0].percent+0)"')" \
+  "4000000|Ăn uống|100|Cà phê|25"
+req GET "/reports/categories?type=INCOME"
+check "Thu theo danh mục" "$(j '"\(.categories[0].name)|\(.total+0)"')" "Lương|20000000"
+req POST /saving-goals '{"name":"Quỹ","target":5000000}'
+RG=$(j .id)
+req POST "/saving-goals/$RG/deposits" "{\"amount\":2000000,\"walletId\":\"$RW\"}"
+for _ in $(seq 1 10); do req GET "/reports/cash-flow?from=$LAST_MONTH&to=$(today)"; [[ "$(j '.points[1].externalOut+0')" == "2000000" ]] && break; sleep 1; done
+check "Dòng tiền theo tháng: 2 tháng, tiền chuyển vào tiết kiệm" \
+  "$(j '"\(.points|length)|\(.points[0].expense+0)|\(.points[1].externalOut+0)|\(.points[1].cashFlow+0)"')" "2|2000000|2000000|14000000"
+req GET "/reports/cash-flow?granularity=DAY&from=$(today)&to=$(today)"
+check "Dòng tiền theo ngày" "$(j '"\(.points|length)|\(.points[0].income+0)"')" "1|20000000"
+req GET /reports/net-worth
+check "Tài sản ròng = ví 22tr + tiết kiệm 2tr" "$(j '"\(.netWorth+0)|\(.groups[0].kind)|\(.groups[0].total+0)|\(.groups[1].kind)"')" "24000000|WALLET|22000000|SAVING"
+req POST /loans "{\"counterpartyName\":\"Ngân hàng\",\"direction\":\"BORROW\",\"principal\":5000000,\"termMonths\":5,\"startDate\":\"$(today)\",\"repaymentMethod\":\"INTEREST_FREE\"}"
+req GET /reports/net-worth
+check "Khoản vay trừ vào tài sản ròng ngay (cache được làm mới)" "$(j '"\(.liabilities+0)|\(.netWorth+0)"')" "5000000|19000000"
+CSV=$(curl -s "$API/reports/transactions.csv?from=$LAST_MONTH&to=$(today)" -H "Authorization: Bearer $TOKEN")
+check "Xuất CSV: tiêu đề + 5 giao dịch" "$(wc -l <<<"$CSV" | tr -d ' ')" "6"
+check "CSV có dòng Cà phê" "$(grep -c ",EXPENSE,Tiền mặt,Cà phê,1000000,VND" <<<"$CSV")" "1"
+req GET "/reports/summary?from=$(today)&to=$LAST_MONTH"
+check "Kỳ không hợp lệ" "$STATUS|$(j .code)" "422|INVALID_PERIOD"
+
+# =====================================================================================
+section "18. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
 ACC_EMAIL="account$RUN_ID@example.com"
 TOKEN=""
 req POST /auth/register "{\"email\":\"$ACC_EMAIL\",\"password\":\"secret123\",\"fullName\":\"Tài khoản Test\",\"deviceName\":\"Điện thoại\"}"
@@ -643,7 +687,7 @@ for _ in $(seq 1 10); do req GET "/wallets?includeArchived=true"; [[ "$(j length
 check "Dữ liệu ở các module khác cũng bị xoá (bất đồng bộ)" "$(j length)" "0"
 
 # =====================================================================================
-section "18. Job đáo hạn/tái tục & thông báo"
+section "19. Job đáo hạn/tái tục & thông báo"
 if [[ "$RUN_JOB_TESTS" != "1" ]]; then
   echo "  (bỏ qua – chạy app với cron nhanh và đặt RUN_JOB_TESTS=1, xem docs/API_TEST_GUIDE.md)"
 else

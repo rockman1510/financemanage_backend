@@ -19,7 +19,7 @@ spring:
   flyway:
     # every module ships its own scripts under db/migration/<module> (version ranges: common 1-99,
     # identity 100+, deposit 200+, loan 300+, notification 400+, ledger 500+, currency 600+,
-    # budget 700+, bill 800+, saving 900+, investment 1000+)
+    # budget 700+, bill 800+, saving 900+, investment 1000+, reporting 1100+)
     locations: classpath:db/migration
     out-of-order: true
   modulith:
@@ -33,8 +33,19 @@ spring:
       max-file-size: 5MB
       max-request-size: 6MB
   cache:
-    type: simple
-    cache-names: dashboard
+    # simple = in memory (one instance); redis = shared by every instance (set CACHE_TYPE=redis and REDIS_*)
+    type: ${CACHE_TYPE:simple}
+    cache-names: dashboard,net-worth
+    redis:
+      time-to-live: 1d
+      key-prefix: "fm:"
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      repositories:
+        enabled: false
 
 app:
   time-zone: Asia/Ho_Chi_Minh
@@ -108,6 +119,10 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    redis:
+      # only meaningful with CACHE_TYPE=redis; otherwise no Redis is running and health would be DOWN
+      enabled: ${REDIS_HEALTH_ENABLED:false}
 
 springdoc:
   swagger-ui:

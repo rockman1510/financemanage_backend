@@ -21,7 +21,7 @@ Mức độ: **MVP** là bản tối thiểu, **Mở rộng** là bản đầy �
 | 4 | Hoá đơn | MVP | `bill` | Xong (GĐ 3) |
 | 5 | Tiết kiệm | **Mở rộng** (bỏ mục tiêu chung gia đình) | `saving` + `deposit` | Xong (GĐ 5) |
 | 6 | Đầu tư | MVP | `investment` (mới) | Xong (GĐ 6) |
-| 7 | Báo cáo và thống kê | MVP | `reporting` (đã có) | Một phần (dashboard tiền gửi/vay nợ) |
+| 7 | Báo cáo và thống kê | MVP | `reporting` (đã có) | Xong (GĐ 7) |
 | 8 | Đa tiền tệ | MVP | `currency` | Xong (GĐ 1); nguồn tỷ giá tự động chưa có provider |
 | 9 | Đăng ký và đăng nhập | **Mở rộng** (Google, không làm Apple) | `identity` | Xong (GĐ 2) |
 | 10 | Hệ thống thông báo | MVP | `notification` | Xong (GĐ 4) |
