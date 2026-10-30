@@ -53,4 +53,9 @@ class InMemoryDepositRepository implements DepositRepository {
     public void delete(Deposit deposit) {
         store.remove(deposit.getId());
     }
+
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        store.values().removeIf(d -> d.getOwnerId().equals(ownerId));
+    }
 }

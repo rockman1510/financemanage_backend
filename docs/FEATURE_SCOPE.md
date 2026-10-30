@@ -23,7 +23,7 @@ Mức độ: **MVP** là bản tối thiểu, **Mở rộng** là bản đầy �
 | 6 | Đầu tư | MVP | `investment` (mới) | Chưa làm |
 | 7 | Báo cáo và thống kê | MVP | `reporting` (đã có) | Một phần (dashboard tiền gửi/vay nợ) |
 | 8 | Đa tiền tệ | MVP | `currency` | Xong (GĐ 1); nguồn tỷ giá tự động chưa có provider |
-| 9 | Đăng ký và đăng nhập | **Mở rộng** (Google, không làm Apple) | `identity` (đã có) | Một phần |
+| 9 | Đăng ký và đăng nhập | **Mở rộng** (Google, không làm Apple) | `identity` | Xong (GĐ 2) |
 | 10 | Hệ thống thông báo | MVP | `notification` (đã có) | Một phần (in-app) |
 
 Vay nợ (`loan`) đã có từ trước và giữ nguyên.
@@ -155,6 +155,10 @@ Thời gian ước tính tính theo **1 lập trình viên toàn thời gian**, 
 - 2FA TOTP: bật/tắt, mã khôi phục, bước xác thực thứ hai khi đăng nhập.
 - Xoá tài khoản: phát `UserDeleted`; mọi module (cả `deposit`, `loan`, `notification` hiện có) nghe event và tự xoá
   dữ liệu.
+
+Đã làm thêm ở GĐ 2: job dọn token/mã hết hạn; phát hiện dùng lại refresh token cũ (huỷ cả phiên); hộp thư giả
+`/api/v1/dev/mailbox` cho profile `dev`. Hạn chế đã biết: access token của thiết bị bị đăng xuất (hoặc của tài khoản
+đã xoá) vẫn dùng được tới khi hết hạn (15 phút); chưa giới hạn số request theo IP.
 
 ### GĐ 3 – Ngân sách + Hoá đơn
 - Module `budget`: ngân sách một/nhiều danh mục, theo kỳ hoặc khoảng tuỳ chọn, lặp lại; đã chi/còn lại/gợi ý mỗi ngày;

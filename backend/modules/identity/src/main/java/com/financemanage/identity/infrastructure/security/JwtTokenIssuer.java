@@ -4,6 +4,7 @@ import com.financemanage.identity.application.TokenIssuer;
 import com.financemanage.identity.domain.UserAccount;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -25,7 +26,7 @@ class JwtTokenIssuer implements TokenIssuer {
     }
 
     @Override
-    public String issueAccessToken(UserAccount user) {
+    public String issueAccessToken(UserAccount user, UUID sessionId) {
         Instant now = clock.instant();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
@@ -34,6 +35,7 @@ class JwtTokenIssuer implements TokenIssuer {
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .claim("email", user.getEmail())
                 .claim("name", user.getFullName())
+                .claim("sid", sessionId.toString())
                 .build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();

@@ -25,6 +25,15 @@ services:
       DB_USERNAME: financemanage
       DB_PASSWORD: financemanage
       JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-me-0123456789}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-local-dev-encryption-key-change-me-0123}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@financemanage.local}
+      # SMTP for verification / password reset emails (without it emails are only logged), e.g.:
+      # SPRING_MAIL_HOST: smtp-relay.brevo.com
+      # SPRING_MAIL_PORT: "587"
+      # SPRING_MAIL_USERNAME: ...
+      # SPRING_MAIL_PASSWORD: ...
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
     ports:
       - "8080:8080"
     volumes:

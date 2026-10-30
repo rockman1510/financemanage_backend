@@ -402,7 +402,88 @@ check_status "Xoá ảnh đính kèm" 204
 rm -f /tmp/api-flow-test-$RUN_ID.png
 
 # =====================================================================================
-section "13. Job đáo hạn/tái tục & thông báo"
+section "13. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
+ACC_EMAIL="account$RUN_ID@example.com"
+TOKEN=""
+req POST /auth/register "{\"email\":\"$ACC_EMAIL\",\"password\":\"secret123\",\"fullName\":\"Tài khoản Test\",\"deviceName\":\"Điện thoại\"}"
+check_status "Đăng ký kèm tên thiết bị" 201
+TOKEN=$(j .accessToken); PHONE_REFRESH=$(j .refreshToken)
+req GET /me
+check "Email chưa xác thực, có mật khẩu" "$(j '"\(.emailVerified)|\(.hasPassword)|\(.defaultCurrency)"')" "false|true|VND"
+
+MAILBOX_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$API/dev/mailbox?to=$ACC_EMAIL")
+last_code() { curl -s "$API/dev/mailbox?to=$ACC_EMAIL" | jq -r '.[0].subject' | grep -oE '[0-9]{6}'; }
+if [[ "$MAILBOX_STATUS" != "200" ]]; then
+  echo "  (bỏ qua phần mã email – cần chạy backend với profile dev để có /api/v1/dev/mailbox)"
+else
+  req POST /me/email/verify '{"code":"12345"}'
+  check "Mã sai" "$STATUS|$(j .code)" "422|INVALID_CODE"
+  req POST /me/email/verification-code
+  check "Gửi lại mã ngay lập tức bị chặn" "$STATUS|$(j .code)" "429|RESEND_TOO_SOON"
+  req POST /me/email/verify "{\"code\":\"$(last_code)\"}"
+  check_status "Xác thực email bằng mã trong email" 204
+  req GET /me
+  check "Email đã xác thực" "$(j .emailVerified)" "true"
+
+  SAVED=$TOKEN; TOKEN=""
+  req POST /auth/forgot-password "{\"email\":\"$ACC_EMAIL\"}"
+  check_status "Quên mật khẩu" 204
+  req POST /auth/forgot-password "{\"email\":\"khong-ton-tai-$RUN_ID@example.com\"}"
+  check_status "Email không tồn tại vẫn trả 204 (không lộ ai đã đăng ký)" 204
+  req POST /auth/reset-password "{\"email\":\"$ACC_EMAIL\",\"code\":\"$(last_code)\",\"newPassword\":\"new-secret1\"}"
+  check_status "Đặt lại mật khẩu bằng mã" 204
+  req POST /auth/refresh "{\"refreshToken\":\"$PHONE_REFRESH\"}"
+  check_status "Đặt lại mật khẩu đăng xuất mọi thiết bị" 401
+  req POST /auth/login "{\"email\":\"$ACC_EMAIL\",\"password\":\"new-secret1\",\"deviceName\":\"Điện thoại\"}"
+  check_status "Đăng nhập bằng mật khẩu mới" 200
+  TOKEN=$(j .accessToken); PASSWORD="new-secret1"
+fi
+PASSWORD=${PASSWORD:-secret123}
+
+SAVED=$TOKEN; TOKEN=""
+req POST /auth/login "{\"email\":\"$ACC_EMAIL\",\"password\":\"$PASSWORD\",\"deviceName\":\"Laptop\"}"
+check "Đăng nhập không có 2FA trả token ngay" "$(j .twoFactorRequired)" "false"
+LAPTOP=$(j .accessToken)
+TOKEN=$LAPTOP
+req GET /me/sessions
+check "Có 2 thiết bị, thiết bị hiện tại là Laptop" "$(j 'length')|$(j '.[] | select(.current) | .deviceName')" "2|Laptop"
+OTHER=$(j '.[] | select(.current | not) | .id')
+req DELETE "/me/sessions/$OTHER"
+check_status "Đăng xuất thiết bị khác" 204
+req GET /me/sessions
+check "Còn 1 thiết bị" "$(j length)" "1"
+
+req PATCH /me '{"defaultCurrency":"USD","locale":"en","timeZone":"Asia/Bangkok","monthStartDay":25}'
+check "Cập nhật hồ sơ" "$(j '"\(.defaultCurrency)|\(.locale)|\(.timeZone)|\(.monthStartDay)"')" "USD|en|Asia/Bangkok|25"
+req PATCH /me '{"monthStartDay":31}'
+check "Ngày bắt đầu tháng tối đa 28" "$STATUS|$(j .code)" "400|VALIDATION_FAILED"
+req POST /me/2fa/setup
+check "Bắt đầu cài 2FA trả secret và otpauth URI" "$(j '.otpauthUri | startswith("otpauth://totp/")')" "true"
+req POST /me/password "{\"currentPassword\":\"sai\",\"newPassword\":\"another-pass1\"}"
+check "Đổi mật khẩu với mật khẩu hiện tại sai" "$STATUS|$(j .code)" "422|WRONG_PASSWORD"
+req POST /me/password "{\"currentPassword\":\"$PASSWORD\",\"newPassword\":\"another-pass1\"}"
+check_status "Đổi mật khẩu" 204
+PASSWORD="another-pass1"
+
+TOKEN=""
+for _ in 1 2 3 4 5; do req POST /auth/login "{\"email\":\"$ACC_EMAIL\",\"password\":\"sai-mat-khau\"}"; done
+check_status "Sai mật khẩu lần thứ 5" 401
+req POST /auth/login "{\"email\":\"$ACC_EMAIL\",\"password\":\"$PASSWORD\"}"
+check "Sau 5 lần sai, tài khoản bị khoá 15 phút (kể cả mật khẩu đúng)" "$STATUS|$(j .code)" "429|ACCOUNT_LOCKED"
+
+TOKEN=$LAPTOP
+req POST /wallets '{"name":"Ví sẽ bị xoá","type":"CASH","initialBalance":1000}'
+req DELETE /me "{\"password\":\"$PASSWORD\",\"confirmEmail\":\"sai@example.com\"}"
+check "Xoá tài khoản phải gõ đúng email" "$STATUS|$(j .code)" "422|CONFIRMATION_MISMATCH"
+req DELETE /me "{\"password\":\"$PASSWORD\",\"confirmEmail\":\"$ACC_EMAIL\"}"
+check_status "Xoá tài khoản" 204
+req GET /me
+check_status "Tài khoản không còn" 404
+for _ in $(seq 1 10); do req GET "/wallets?includeArchived=true"; [[ "$(j length)" == "0" ]] && break; sleep 1; done
+check "Dữ liệu ở các module khác cũng bị xoá (bất đồng bộ)" "$(j length)" "0"
+
+# =====================================================================================
+section "14. Job đáo hạn/tái tục & thông báo"
 if [[ "$RUN_JOB_TESTS" != "1" ]]; then
   echo "  (bỏ qua – chạy app với cron nhanh và đặt RUN_JOB_TESTS=1, xem docs/API_TEST_GUIDE.md)"
 else

@@ -76,6 +76,11 @@ class ExchangeRateRepositoryAdapter implements ExchangeRateRepository {
         jpa.deleteById(rate.getId());
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteByOwnerId(ownerId);
+    }
+
     private ExchangeRate toDomain(ExchangeRateJpaEntity e) {
         return new ExchangeRate(e.id, e.ownerId, Currency.getInstance(e.baseCurrency),
                 Currency.getInstance(e.quoteCurrency), e.rate, e.effectiveDate, e.source);

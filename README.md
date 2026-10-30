@@ -34,7 +34,7 @@ cd backend && ./gradlew build        # unit test + kiểm tra ranh giới module
 cd mobile && npm test && npm run typecheck && npm run lint
 ```
 
-Kiểm chứng business flow qua API (curl + jq, 144 kiểm tra): xem [docs/API_TEST_GUIDE.md](docs/API_TEST_GUIDE.md) và
+Kiểm chứng business flow qua API (curl + jq, 170 kiểm tra): xem [docs/API_TEST_GUIDE.md](docs/API_TEST_GUIDE.md) và
 `scripts/api-flow-test.sh`.
 
 ## Kiến trúc tóm tắt
@@ -45,7 +45,7 @@ Kiểm chứng business flow qua API (curl + jq, 144 kiểm tra): xem [docs/API_
 backend/
 ├─ shared-kernel/        Money, Percentage, CashFlowItem, xử lý lỗi, CurrentUser (module OPEN)
 ├─ modules/
-│  ├─ identity/          Đăng ký/đăng nhập, JWT (HS256), refresh token xoay vòng
+│  ├─ identity/          Đăng ký/đăng nhập, Google, 2FA (TOTP), xác thực email, quên mật khẩu, thiết bị, xoá tài khoản
 │  ├─ ledger/            Ví, danh mục, giao dịch thu chi, chuyển tiền, giao dịch định kỳ, ảnh hoá đơn
 │  ├─ currency/          Tỷ giá (nhập tay hoặc provider) và quy đổi tiền tệ
 │  ├─ deposit/           Tiền gửi: domain thuần Java + Strategy tính lãi, JPA adapter, REST, job đáo hạn

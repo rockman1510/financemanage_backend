@@ -50,6 +50,16 @@ class AttachmentRepositoryAdapter implements AttachmentRepository {
         jpa.deleteById(attachment.id());
     }
 
+    @Override
+    public List<Attachment> findByOwner(UUID ownerId) {
+        return jpa.findByOwnerId(ownerId).stream().map(this::toDomain).toList();
+    }
+
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteByOwnerId(ownerId);
+    }
+
     private Attachment toDomain(AttachmentJpaEntity e) {
         return new Attachment(e.id, e.ownerId, e.transactionId, e.fileName, e.contentType, e.size, e.storageKey,
                 e.createdAt);

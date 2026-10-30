@@ -105,6 +105,11 @@ final class InMemoryLedger {
         public void delete(Wallet wallet) {
             store.remove(wallet.getId());
         }
+
+        @Override
+        public void deleteByOwner(UUID ownerId) {
+            store.values().removeIf(w -> w.getOwnerId().equals(ownerId));
+        }
     }
 
     static class Categories implements CategoryRepository {
@@ -151,6 +156,12 @@ final class InMemoryLedger {
         @Override
         public void markSeeded(UUID ownerId) {
             seeded.add(ownerId);
+        }
+
+        @Override
+        public void deleteByOwner(UUID ownerId) {
+            store.values().removeIf(c -> c.getOwnerId().equals(ownerId));
+            seeded.remove(ownerId);
         }
     }
 
@@ -228,6 +239,11 @@ final class InMemoryLedger {
                     .filter(t -> f.maxAmount() == null || t.getAmount().amount().compareTo(f.maxAmount()) <= 0)
                     .filter(t -> f.text() == null || (t.getNote() != null && t.getNote().contains(f.text())));
         }
+
+        @Override
+        public void deleteByOwner(UUID ownerId) {
+            store.values().removeIf(t -> t.getOwnerId().equals(ownerId));
+        }
     }
 
     static class Rules implements RecurringTransactionRepository {
@@ -273,6 +289,11 @@ final class InMemoryLedger {
         public void delete(RecurringTransaction rule) {
             store.remove(rule.getId());
         }
+
+        @Override
+        public void deleteByOwner(UUID ownerId) {
+            store.values().removeIf(r -> r.getOwnerId().equals(ownerId));
+        }
     }
 
     static class Attachments implements AttachmentRepository {
@@ -297,6 +318,16 @@ final class InMemoryLedger {
         @Override
         public void delete(Attachment attachment) {
             store.remove(attachment.id());
+        }
+
+        @Override
+        public List<Attachment> findByOwner(UUID ownerId) {
+            return store.values().stream().filter(a -> a.ownerId().equals(ownerId)).toList();
+        }
+
+        @Override
+        public void deleteByOwner(UUID ownerId) {
+            store.values().removeIf(a -> a.ownerId().equals(ownerId));
         }
     }
 

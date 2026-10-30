@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.financemanage.identity.domain.UserAccount;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.Jwt;
 
@@ -21,11 +22,13 @@ class JwtTokenIssuerTest {
         var issuer = new JwtTokenIssuer(config.jwtEncoder(key), properties, Clock.systemUTC());
         UserAccount user = new UserAccount("an@example.com", "x", "An");
 
-        Jwt jwt = config.jwtDecoder(key).decode(issuer.issueAccessToken(user));
+        UUID sessionId = UUID.randomUUID();
+        Jwt jwt = config.jwtDecoder(key).decode(issuer.issueAccessToken(user, sessionId));
 
         assertThat(jwt.getSubject()).isEqualTo(user.getId().toString());
         assertThat(jwt.getClaimAsString("email")).isEqualTo("an@example.com");
         assertThat(jwt.getClaimAsString("iss")).isEqualTo("test-issuer");
+        assertThat(jwt.getClaimAsString("sid")).isEqualTo(sessionId.toString());
         assertThat(issuer.accessTokenTtlSeconds()).isEqualTo(300);
     }
 

@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 interface TransactionJpaRepository extends JpaRepository<TransactionJpaEntity, UUID>,
@@ -18,4 +20,8 @@ interface TransactionJpaRepository extends JpaRepository<TransactionJpaEntity, U
     boolean existsByWalletId(UUID walletId);
 
     boolean existsByCategoryId(UUID categoryId);
+
+    @Modifying
+    @Query("delete from TransactionJpaEntity t where t.ownerId = :ownerId")
+    void deleteByOwnerId(UUID ownerId);
 }

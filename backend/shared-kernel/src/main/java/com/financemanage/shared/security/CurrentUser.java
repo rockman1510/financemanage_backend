@@ -12,4 +12,10 @@ public final class CurrentUser {
     public static UUID id(Jwt jwt) {
         return UUID.fromString(jwt.getSubject());
     }
+
+    /** Session (signed-in device) of the access token ({@code sid} claim); {@code null} when the token has none. */
+    public static UUID sessionId(Jwt jwt) {
+        String sid = jwt.getClaimAsString("sid");
+        return sid == null ? null : UUID.fromString(sid);
+    }
 }

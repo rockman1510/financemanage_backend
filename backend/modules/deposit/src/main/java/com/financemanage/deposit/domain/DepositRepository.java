@@ -21,4 +21,7 @@ public interface DepositRepository {
     List<Deposit> findActiveMaturingOn(LocalDate date);
 
     void delete(Deposit deposit);
+
+    /** Removes every deposit of the owner (account deletion). */
+    void deleteByOwner(UUID ownerId);
 }

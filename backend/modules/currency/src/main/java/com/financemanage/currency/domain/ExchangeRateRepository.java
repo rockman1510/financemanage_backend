@@ -22,4 +22,7 @@ public interface ExchangeRateRepository {
     List<ExchangeRate> findVisible(UUID ownerId, String base, String quote, int limit);
 
     void delete(ExchangeRate rate);
+
+    /** Removes the owner's own rates (account deletion); global rates stay. */
+    void deleteByOwner(UUID ownerId);
 }
