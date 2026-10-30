@@ -36,12 +36,20 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableConfigurationProperties({JwtProperties.class, IdentityProperties.class})
 class SecurityConfig {
 
+    /**
+     * With {@code management.server.port} set (production), actuator endpoints are served on that port only, which
+     * the reverse proxy never exposes: Prometheus scrapes it without a token.
+     */
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                            @Value("${management.server.port:-1}") int managementPort)
+            throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(request -> managementPort > 0 && request.getLocalPort() == managementPort)
+                        .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/**").permitAll()
                         // only mapped in the dev profile (DevMailboxController)
                         .requestMatchers(HttpMethod.GET, "/api/v1/dev/mailbox").permitAll()
