@@ -5,6 +5,7 @@ import com.financemanage.deposit.domain.model.DepositType;
 import com.financemanage.deposit.domain.model.InterestCalculationMethod;
 import com.financemanage.deposit.domain.model.InterestPaymentMethod;
 import com.financemanage.deposit.domain.model.RolloverPolicy;
+import com.financemanage.deposit.domain.model.WalletLinkStatus;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -72,6 +73,16 @@ class DepositJpaEntity {
     Instant updatedAt = Instant.now();
     @Version
     Long version;
+    @Column(name = "funding_wallet_id")
+    UUID fundingWalletId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "funding_status")
+    WalletLinkStatus fundingStatus;
+    @Column(name = "payout_wallet_id")
+    UUID payoutWalletId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payout_status")
+    WalletLinkStatus payoutStatus;
 
     @OneToMany(mappedBy = "deposit", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("occurredOn ASC, createdAt ASC")

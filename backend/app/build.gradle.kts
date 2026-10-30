@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":modules:currency"))
     implementation(project(":modules:budget"))
     implementation(project(":modules:bill"))
+    implementation(project(":modules:saving"))
 
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-flyway")

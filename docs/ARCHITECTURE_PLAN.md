@@ -324,5 +324,8 @@ Mỗi feature độc lập → thêm feature mới không ảnh hưởng feature
 - **Giai đoạn 4 (xong)**: `notification` mở rộng: push qua Expo, cài đặt (tắt loại, giờ yên lặng, nhắc ghi chép theo
   múi giờ), thông báo ngân sách/hoá đơn, đánh dấu tất cả đã đọc, chống trùng bằng khoá dedup.
 
+- **Giai đoạn 5 (xong)**: `saving` (mục tiêu, nạp/rút qua lệnh `RecordExternalTransaction` → `EXTERNAL_OUT/IN`,
+  trích tự động, làm tròn, mốc 50%/100%) và `deposit` nối với ví khi mở/tất toán.
+
 Phạm vi giai đoạn tiếp theo (ví, giao dịch, ngân sách, hoá đơn, tiết kiệm, đầu tư, đa tiền tệ, đăng nhập mở rộng,
 thông báo) được chốt trong [FEATURE_SCOPE.md](FEATURE_SCOPE.md). Chia sẻ dữ liệu trong gia đình đã bị loại khỏi phạm vi.

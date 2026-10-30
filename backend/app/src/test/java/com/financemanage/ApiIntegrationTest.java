@@ -725,6 +725,101 @@ class ApiIntegrationTest {
         mvc.perform(auth(get("/api/v1/notifications/devices"))).andExpect(jsonPath("$", hasSize(0)));
     }
 
+    @Test
+    void savingGoalsMoveMoneyThroughTheLedger() throws Exception {
+        String cash = createWallet("Tiền mặt", "CASH", "VND", 20_000_000);
+        String goal = mvc.perform(auth(json(post("/api/v1/saving-goals"), """
+                        {"name":"Du lịch Nhật","target":10000000,"deadline":"%s"}""".formatted(today.plusMonths(5)))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.saved").value(0))
+                .andExpect(jsonPath("$.monthlySuggestion").value(2_000_000))
+                .andReturn().getResponse().getContentAsString();
+        String goalId = JsonPath.read(goal, "$.id");
+
+        mvc.perform(auth(json(post("/api/v1/saving-goals/" + goalId + "/deposits"),
+                        "{\"amount\":6000000,\"walletId\":\"%s\"}".formatted(cash))))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("PENDING"));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/saving-goals/" + goalId)))
+                    .andExpect(jsonPath("$.saved").value(6_000_000))
+                    .andExpect(jsonPath("$.percent").value(60))
+                    .andExpect(jsonPath("$.movements[0].status").value("RECORDED"));
+            expectBalance(cash, 14_000_000);
+            mvc.perform(auth(get("/api/v1/notifications")))
+                    .andExpect(jsonPath("$[?(@.type == 'SAVING_GOAL_MILESTONE')]", hasSize(1)));
+        });
+        mvc.perform(auth(get("/api/v1/transactions?walletId=" + cash)))
+                .andExpect(jsonPath("$.items[0].type").value("EXTERNAL_OUT"))
+                .andExpect(jsonPath("$.items[0].source").value("SAVING"));
+        mvc.perform(auth(get("/api/v1/transactions/summary"))).andExpect(jsonPath("$", hasSize(0)));
+
+        mvc.perform(auth(json(post("/api/v1/saving-goals/" + goalId + "/withdrawals"),
+                        "{\"amount\":9000000,\"walletId\":\"%s\"}".formatted(cash))))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("INSUFFICIENT_SAVINGS"));
+        mvc.perform(auth(json(post("/api/v1/saving-goals/" + goalId + "/withdrawals"),
+                        "{\"amount\":1000000,\"walletId\":\"%s\"}".formatted(cash))))
+                .andExpect(status().isAccepted());
+        // the goal changes again when the ledger confirms; editing it meanwhile would answer 409 (retry)
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> mvc.perform(auth(get("/api/v1/saving-goals/"
+                + goalId))).andExpect(jsonPath("$.movements[0].status").value("RECORDED")));
+
+        mvc.perform(auth(json(put("/api/v1/saving-goals/" + goalId + "/round-up"),
+                        "{\"walletId\":\"%s\",\"unit\":10000}".formatted(cash))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.roundUp.unit").value(10000));
+        String food = categoryId(mvc.perform(auth(get("/api/v1/categories"))).andReturn().getResponse()
+                .getContentAsString(), "FOOD");
+        mvc.perform(auth(json(post("/api/v1/transactions"),
+                "{\"walletId\":\"%s\",\"categoryId\":\"%s\",\"amount\":47000}".formatted(cash, food))))
+                .andExpect(status().isCreated());
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> mvc.perform(auth(get("/api/v1/saving-goals/"
+                + goalId))).andExpect(jsonPath("$.movements[0].source").value("ROUND_UP"))
+                .andExpect(jsonPath("$.movements[0].status").value("RECORDED")));
+        mvc.perform(auth(json(put("/api/v1/saving-goals/" + goalId + "/auto-contribution"),
+                        "{\"amount\":500000,\"walletId\":\"%s\",\"frequency\":\"MONTHLY\"}".formatted(cash))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.autoContribution.nextDate").value(today.plusMonths(1).toString()));
+        // 6tr − 1tr + 3k round-up of the 47k expense + 500k contributed today
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/saving-goals/" + goalId))).andExpect(jsonPath("$.saved").value(5_503_000));
+            expectBalance(cash, 20_000_000 - 6_000_000 + 1_000_000 - 47_000 - 3_000 - 500_000);
+        });
+        mvc.perform(auth(delete("/api/v1/saving-goals/" + goalId)))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("GOAL_NOT_EMPTY"));
+    }
+
+    @Test
+    void depositsCanBeFundedFromAndPaidIntoWallets() throws Exception {
+        String bank = createWallet("Vietcombank", "BANK_ACCOUNT", "VND", 150_000_000);
+        String deposit = mvc.perform(auth(json(post("/api/v1/deposits"), """
+                        {"institutionName":"Vietcombank","type":"TERM","principal":100000000,"annualRate":6,
+                         "termMonths":6,"openDate":"%s","fromWalletId":"%s"}""".formatted(today, bank))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.fundingWalletId").value(bank))
+                .andReturn().getResponse().getContentAsString();
+        String depositId = JsonPath.read(deposit, "$.id");
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/deposits/" + depositId)))
+                    .andExpect(jsonPath("$.fundingStatus").value("RECORDED"));
+            expectBalance(bank, 50_000_000);
+        });
+
+        mvc.perform(auth(json(post("/api/v1/deposits/" + depositId + "/settle"),
+                        "{\"date\":\"%s\",\"toWalletId\":\"%s\"}".formatted(today, bank))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(100_000_000));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/deposits/" + depositId)))
+                    .andExpect(jsonPath("$.payoutStatus").value("RECORDED"));
+            expectBalance(bank, 150_000_000);
+        });
+        String usd = createWallet("USD", "CASH", "USD", 0);
+        mvc.perform(auth(json(post("/api/v1/deposits"), """
+                        {"institutionName":"ACB","type":"DEMAND","principal":1000,"annualRate":0.5,
+                         "openDate":"%s","fromWalletId":"%s"}""".formatted(today, usd))))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("CURRENCY_MISMATCH"));
+    }
+
     private String lastCode(String email) {
         String subject = mailbox.messagesTo(email).getFirst().subject();
         Matcher matcher = Pattern.compile("(\\d{6})").matcher(subject);

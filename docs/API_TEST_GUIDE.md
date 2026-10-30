@@ -5,7 +5,7 @@ thức, bạn tự tính lại được bằng máy tính hoặc Excel.
 
 Có 3 cách, từ nhanh đến chi tiết:
 
-1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 192 kiểm tra, mỗi dòng in ✔ hoặc ✘.
+1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 210 kiểm tra, mỗi dòng in ✔ hoặc ✘.
 2. **Gọi tay từng bước bằng curl** (mục 3 trở đi): copy từng lệnh, so kết quả với giá trị kỳ vọng.
 3. **Swagger UI**: `http://localhost:8080/swagger-ui.html`. Bấm *Authorize* và dán access token rồi thử từng endpoint.
 
@@ -25,7 +25,7 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
-  bạn thấy kết quả ngay. Chỉ cần khi test mục 13 (job).
+  bạn thấy kết quả ngay. Chỉ cần khi test mục 14 (job).
 - Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
   giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
@@ -39,8 +39,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 192 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 16 (job) được bỏ
-qua (còn 183 kiểm tra). Phần mã gửi qua email (mục 15) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 210 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 17 (job) được bỏ
+qua (còn 201 kiểm tra). Phần mã gửi qua email (mục 16) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -384,7 +384,39 @@ Quy tắc:
 
 ---
 
-## 12. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
+## 12. Mục tiêu tiết kiệm & sổ tiết kiệm nối với ví
+
+Dùng **một user mới** có ví `$CASH` (20.000.000 VND).
+
+Quy tắc:
+
+- Mục tiêu có số tiền cần đạt và hạn chót (tuỳ chọn). **Gợi ý mỗi tháng** = còn thiếu / số tháng tới hạn (tháng đang
+  dở tính là một tháng), làm tròn lên.
+- **Nạp/rút** chuyển tiền giữa ví và mục tiêu (`202`, `PENDING`). Mục tiêu thay đổi ngay, sổ thu chi ghi phía ví là
+  `EXTERNAL_OUT`/`EXTERNAL_IN` (nguồn `SAVING`) – **không phải chi/thu** nên không vào báo cáo thu chi – rồi trả lời →
+  `RECORDED`. Sổ thu chi từ chối (ví bị lưu trữ…) → `FAILED` và mục tiêu hoàn lại. Ví phải cùng tiền tệ với mục tiêu.
+- Trong lúc sổ thu chi đang xác nhận (vài trăm ms), sửa mục tiêu có thể nhận `409 CONCURRENT_MODIFICATION`: gửi lại.
+- **Trích tự động** hằng tuần/tháng từ ví (job 00:40, `app.saving.auto-contribution-cron`); ngày bắt đầu hôm nay hoặc
+  quá khứ thì trích ngay các kỳ đã tới. Ví bị lưu trữ thì tự tắt.
+- **Làm tròn**: mỗi khoản chi do người dùng ghi ở ví đã chọn được làm tròn lên bội số `unit`, phần chênh lệch chuyển
+  vào mục tiêu (47.000 → 50.000 để dành 3.000). Mỗi ví chỉ làm tròn cho một mục tiêu.
+- Thông báo `SAVING_GOAL_MILESTONE` khi đạt 50% và 100% (một lần mỗi mốc). Chỉ xoá được mục tiêu đã rút hết tiền.
+- **Sổ tiết kiệm** (mục 4) nhận thêm `fromWalletId` khi mở (trừ tiền gốc ở ví) và `toWalletId` khi tất toán (cộng tổng
+  tiền vào ví); trạng thái phía ví ở `fundingStatus` / `payoutStatus` (`PENDING` → `RECORDED`/`FAILED`).
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| S1 | Tạo mục tiêu | `curl -s -X POST $API/saving-goals -H "$AUTH" -H "$JSON" -d '{"name":"Du lịch","target":10000000,"deadline":"<5 tháng nữa>"}' \| jq` | `201`, `saved=0`, `monthlySuggestion=2000000` |
+| S2 | Nạp 6tr | `curl -s -X POST $API/saving-goals/<id>/deposits -H "$AUTH" -H "$JSON" -d "{\"amount\":6000000,\"walletId\":\"$CASH\"}" \| jq` | `202 PENDING`; sau đó `GET` mục tiêu: `saved=6000000`, `percent=60`, `movements[0].status=RECORDED`; ví còn 14tr; có thông báo `SAVING_GOAL_MILESTONE` (50%) |
+| S3 | Giao dịch phía ví | `curl -s "$API/transactions?walletId=$CASH" -H "$AUTH" \| jq '.items[0] \| {type,source}'` | `EXTERNAL_OUT`, `SAVING`; `GET $API/transactions/summary` không có khoản chi này |
+| S4 | Rút quá số tiền | `POST .../withdrawals` với `amount` 9tr | `422 INSUFFICIENT_SAVINGS` |
+| S5 | Làm tròn | `curl -s -X PUT $API/saving-goals/<id>/round-up -H "$AUTH" -H "$JSON" -d "{\"walletId\":\"$CASH\",\"unit\":10000}"`, rồi ghi khoản chi 47.000 ở `$CASH` | Mục tiêu có `movement` `ROUND_UP` 3.000 |
+| S6 | Trích tự động | `curl -s -X PUT $API/saving-goals/<id>/auto-contribution -H "$AUTH" -H "$JSON" -d "{\"amount\":500000,\"walletId\":\"$CASH\",\"frequency\":\"MONTHLY\"}" \| jq .autoContribution` | Trích 500k ngay hôm nay, `nextDate` = tháng sau. `DELETE .../auto-contribution` để tắt |
+| S7 | Sổ tiết kiệm từ ví | `POST $API/deposits` như mục 4 thêm `"fromWalletId":"$CASH"`; tất toán: `POST $API/deposits/<id>/settle` với `{"toWalletId":"$CASH"}` | `fundingStatus` rồi `payoutStatus` thành `RECORDED`; ví bị trừ tiền gốc rồi nhận lại tổng tiền tất toán |
+
+---
+
+## 13. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
 
 Dùng **một user mới**, đăng ký kèm `deviceName`. Lấy mã trong email:
 
@@ -431,7 +463,7 @@ Quy tắc:
 
 ---
 
-## 13. Job đáo hạn, tái tục và thông báo
+## 14. Job đáo hạn, tái tục và thông báo
 
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
@@ -475,7 +507,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 
 ---
 
-## 14. Bảng đối chiếu quy tắc nghiệp vụ
+## 15. Bảng đối chiếu quy tắc nghiệp vụ
 
 | Quy tắc | Kiểm tra ở |
 |---|---|
@@ -484,7 +516,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi tích luỹ dừng ở ngày đáo hạn | D1 |
 | Rút trước hạn tính lãi theo lãi suất không kỳ hạn, báo rõ số lãi bị mất | D4 |
 | Không tất toán 2 lần; không tất toán trước ngày gửi | D6, D9 |
-| Tái tục gốc / gốc + lãi / không tái tục | Mục 13 |
+| Tái tục gốc / gốc + lãi / không tái tục | Mục 14 |
 | Lịch trả nợ đúng cho 4 phương thức, tổng gốc luôn đúng bằng số tiền vay | 5.1 |
 | Thanh toán trừ lãi trước gốc, kỳ cũ trước | L2, L8 |
 | Gửi lại cùng Idempotency-Key không trừ tiền 2 lần | L3 |
@@ -511,4 +543,6 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Xoá tài khoản xoá dữ liệu ở mọi module | U15 |
 | Ngân sách tính cả danh mục con, quy đổi tiền tệ, gợi ý mức chi mỗi ngày | B1–B4 |
 | Thanh toán hoá đơn ghi khoản chi qua sổ thu chi (saga), kỳ sau không trôi ngày | H1–H4 |
-| Thông báo chống trùng, tôn trọng loại bị tắt và giờ yên lặng | N1, N2, mục 13 |
+| Thông báo chống trùng, tôn trọng loại bị tắt và giờ yên lặng | N1, N2, mục 14 |
+| Nạp/rút mục tiêu qua sổ thu chi (không tính là thu chi), hoàn lại khi bị từ chối, làm tròn, trích tự động, mốc 50%/100% | S1–S6 |
+| Sổ tiết kiệm trừ tiền ví khi mở, cộng vào ví khi tất toán | S7 |
