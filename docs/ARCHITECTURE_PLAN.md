@@ -332,6 +332,10 @@ Mỗi feature độc lập → thêm feature mới không ảnh hưởng feature
   event lệch thứ tự, tự nạp lần đầu qua `LedgerQueryApi.transactions`); báo cáo thu/chi theo kỳ + so sánh kỳ trước,
   theo danh mục, dòng tiền, tài sản ròng (ví, tiết kiệm, đầu tư, tiền gửi, vay), xuất CSV; cache `simple` hoặc Redis
   (`CACHE_TYPE=redis`).
+- **Giai đoạn 8 (xong)**: triển khai phương án A trên một VPS – xem [DEPLOYMENT.md](DEPLOYMENT.md).
+  - Stack: `docker-compose.prod.yml` (Caddy HTTPS, Redis, backup mã hoá ra object storage, Prometheus).
+  - Actuator ở cổng quản trị nội bộ.
+  - Image dựng bởi `release.yml`.
 
 Phạm vi giai đoạn tiếp theo (ví, giao dịch, ngân sách, hoá đơn, tiết kiệm, đầu tư, đa tiền tệ, đăng nhập mở rộng,
 thông báo) được chốt trong [FEATURE_SCOPE.md](FEATURE_SCOPE.md). Chia sẻ dữ liệu trong gia đình đã bị loại khỏi phạm vi.
