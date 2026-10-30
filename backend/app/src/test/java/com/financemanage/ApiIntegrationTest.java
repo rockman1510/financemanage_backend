@@ -445,21 +445,22 @@ class ApiIntegrationTest {
                 .andExpect(status().isNoContent());
         mvc.perform(json(post("/api/v1/auth/forgot-password"), "{\"email\":\"nobody-%s\"}".formatted(email)))
                 .andExpect(status().isNoContent()); // same answer: does not reveal who is registered
-        String reset = "{\"email\":\"%s\",\"code\":\"%s\",\"newPassword\":\"brand-new-1\"}";
-        mvc.perform(json(post("/api/v1/auth/reset-password"), reset.formatted(email, "12345")))
+        String newPassword = randomPassword();
+        String reset = "{\"email\":\"%s\",\"code\":\"%s\",\"newPassword\":\"%s\"}";
+        mvc.perform(json(post("/api/v1/auth/reset-password"), reset.formatted(email, "12345", newPassword)))
                 .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("INVALID_CODE"));
-        mvc.perform(json(post("/api/v1/auth/reset-password"), reset.formatted(email, lastCode(email))))
+        mvc.perform(json(post("/api/v1/auth/reset-password"), reset.formatted(email, lastCode(email), newPassword)))
                 .andExpect(status().isNoContent());
         mvc.perform(json(post("/api/v1/auth/refresh"),
                         "{\"refreshToken\":\"%s\"}".formatted((String) JsonPath.read(login, "$.refreshToken"))))
                 .andExpect(status().isUnauthorized()); // the reset signed every device out
-        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "brand-new-1"))).andExpect(status().isOk());
+        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, newPassword))).andExpect(status().isOk());
 
         for (int i = 0; i < 5; i++) {
             mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "wrong-pass")))
                     .andExpect(status().isUnauthorized());
         }
-        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "brand-new-1")))
+        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, newPassword)))
                 .andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("ACCOUNT_LOCKED"));
     }
 
@@ -521,13 +522,14 @@ class ApiIntegrationTest {
         mvc.perform(auth(json(patch("/api/v1/me"), "{\"timeZone\":\"Mars/Base\"}"), laptopToken))
                 .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("INVALID_TIME_ZONE"));
 
-        String change = "{\"currentPassword\":\"%s\",\"newPassword\":\"changed-pass1\"}";
-        mvc.perform(auth(json(post("/api/v1/me/password"), change.formatted("wrong")), laptopToken))
+        String changed = randomPassword();
+        String change = "{\"currentPassword\":\"%s\",\"newPassword\":\"%s\"}";
+        mvc.perform(auth(json(post("/api/v1/me/password"), change.formatted("wrong", changed)), laptopToken))
                 .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("WRONG_PASSWORD"));
-        mvc.perform(auth(json(post("/api/v1/me/password"), change.formatted("secret123")), laptopToken))
+        mvc.perform(auth(json(post("/api/v1/me/password"), change.formatted("secret123", changed)), laptopToken))
                 .andExpect(status().isNoContent());
         mvc.perform(auth(get("/api/v1/me/sessions"), laptopToken)).andExpect(jsonPath("$", hasSize(1)));
-        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "changed-pass1"))).andExpect(status().isOk());
+        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, changed))).andExpect(status().isOk());
     }
 
     @Test
@@ -599,6 +601,11 @@ class ApiIntegrationTest {
         Matcher matcher = Pattern.compile("(\\d{6})").matcher(subject);
         assertThat(matcher.find()).as("code in %s", subject).isTrue();
         return matcher.group(1);
+    }
+
+    /** Generated at run time so that no password-like literal sits in the source. */
+    private static String randomPassword() {
+        return "pw-" + UUID.randomUUID();
     }
 
     private static String credentials(String email, String password) {
