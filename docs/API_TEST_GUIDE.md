@@ -5,7 +5,7 @@ thức, bạn tự tính lại được bằng máy tính hoặc Excel.
 
 Có 3 cách, từ nhanh đến chi tiết:
 
-1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 144 kiểm tra, mỗi dòng in ✔ hoặc ✘.
+1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 170 kiểm tra, mỗi dòng in ✔ hoặc ✘.
 2. **Gọi tay từng bước bằng curl** (mục 3 trở đi): copy từng lệnh, so kết quả với giá trị kỳ vọng.
 3. **Swagger UI**: `http://localhost:8080/swagger-ui.html`. Bấm *Authorize* và dán access token rồi thử từng endpoint.
 
@@ -25,10 +25,12 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
-  bạn thấy kết quả ngay. Chỉ cần khi test mục 10 (job).
+  bạn thấy kết quả ngay. Chỉ cần khi test mục 11 (job).
 - Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
   giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
+- Profile `dev` không gửi email thật: mọi email (mã xác thực, mã đặt lại mật khẩu) nằm trong hộp thư giả
+  `GET /api/v1/dev/mailbox?to=<email>` (mới nhất trước). Endpoint này không tồn tại ở profile khác.
 
 ## 2. Chạy script tự động
 
@@ -37,8 +39,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 144 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 13 (job) được bỏ
-qua (còn 135 kiểm tra). Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 170 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 14 (job) được bỏ
+qua (còn 161 kiểm tra). Phần mã gửi qua email (mục 13) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -317,7 +319,54 @@ curl -s -X POST $API/recurring-transactions -H "$AUTH" -H "$JSON" \
 
 ---
 
-## 10. Job đáo hạn, tái tục và thông báo
+## 10. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
+
+Dùng **một user mới**, đăng ký kèm `deviceName`. Lấy mã trong email:
+
+```bash
+code() { curl -s "$API/dev/mailbox?to=$EMAIL" | jq -r '.[0].subject' | grep -oE '[0-9]{6}'; }
+```
+
+Quy tắc:
+
+- Đăng ký gửi ngay **mã 6 số** để xác thực email. Mã hết hạn sau 15 phút, nhập sai 5 lần thì mã bị huỷ, chỉ gửi
+  lại được sau 1 phút. Email chưa xác thực vẫn dùng app bình thường (`/me` có `emailVerified`).
+- **Sai mật khẩu 5 lần** thì tài khoản bị khoá **15 phút**, kể cả khi nhập đúng (`429 ACCOUNT_LOCKED`). Đăng nhập
+  đúng hoặc đặt lại mật khẩu thì xoá bộ đếm. Mã 2FA sai cũng được đếm.
+- Quên mật khẩu luôn trả `204`, để không lộ email nào đã đăng ký. Đặt lại mật khẩu sẽ đăng xuất **mọi thiết bị**;
+  đổi mật khẩu đăng xuất **các thiết bị khác**.
+- Mỗi lần đăng nhập là một **phiên (thiết bị)**. Refresh token được xoay vòng; dùng lại token cũ bị coi là bị đánh
+  cắp và **cả phiên bị huỷ**. Đăng xuất một thiết bị thì access token của nó vẫn dùng được tới khi hết hạn (15 phút).
+- **2FA**: ứng dụng xác thực (Google Authenticator, Authy…) theo chuẩn TOTP. Bật 2FA trả 10 mã khôi phục, mỗi mã
+  dùng một lần. Khi bật 2FA, đăng nhập trả `twoFactorRequired=true` và `challengeToken` (5 phút) thay vì token.
+- **Google**: app gửi ID token lấy từ Google Sign-In. Backend tự kiểm tra chữ ký, `aud` (client id cấu hình trong
+  `GOOGLE_CLIENT_IDS`), hạn dùng và email đã xác thực; miễn phí, không gọi API Google mỗi lần đăng nhập. Chưa cấu
+  hình client id thì trả `422 GOOGLE_SIGN_IN_DISABLED`. Email trùng tài khoản đã có thì liên kết vào tài khoản đó;
+  nếu tài khoản đó **chưa xác thực email** thì mật khẩu cũ bị xoá (chống chiếm trước địa chỉ email của người khác).
+- **Xoá tài khoản** cần gõ lại email và mật khẩu. Dữ liệu ở mọi module (ví, giao dịch, ảnh, tiền gửi, vay nợ, tỷ giá,
+  thông báo) bị xoá ngay sau đó, bất đồng bộ qua event `UserDeleted`.
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| U1 | Hồ sơ | `curl -s $API/me -H "$AUTH" \| jq` | `emailVerified=false`, `hasPassword=true`, `defaultCurrency=VND`, `locale=vi`, `monthStartDay=1` |
+| U2 | Xác thực email | `curl -si -X POST $API/me/email/verify -H "$AUTH" -H "$JSON" -d "{\"code\":\"$(code)\"}"` | `204`; `/me` có `emailVerified=true`. Mã sai: `422 INVALID_CODE` |
+| U3 | Gửi lại mã ngay | `curl -s -X POST $API/me/email/verification-code -H "$AUTH" \| jq .code` | `RESEND_TOO_SOON` (`429`) trong 1 phút đầu |
+| U4 | Quên mật khẩu | `curl -si -X POST $API/auth/forgot-password -H "$JSON" -d "{\"email\":\"$EMAIL\"}"` | `204` (email không tồn tại cũng `204`) |
+| U5 | Đặt lại mật khẩu | `curl -si -X POST $API/auth/reset-password -H "$JSON" -d "{\"email\":\"$EMAIL\",\"code\":\"$(code)\",\"newPassword\":\"new-secret1\"}"` | `204`. Refresh token cũ trả `401`; đăng nhập bằng mật khẩu mới được |
+| U6 | Danh sách thiết bị | đăng nhập thêm với `"deviceName":"Laptop"`, rồi `curl -s $API/me/sessions -H "$AUTH" \| jq` | Mỗi thiết bị một dòng, `current=true` ở thiết bị đang gọi |
+| U7 | Đăng xuất thiết bị | `curl -si -X DELETE $API/me/sessions/<id> -H "$AUTH"`; `DELETE $API/me/sessions` đăng xuất mọi thiết bị khác | `204`. Refresh token của thiết bị đó trả `401` |
+| U8 | Sửa hồ sơ | `curl -s -X PATCH $API/me -H "$AUTH" -H "$JSON" -d '{"defaultCurrency":"USD","locale":"en","timeZone":"Asia/Bangkok","monthStartDay":25}' \| jq` | `200`. `monthStartDay` từ 1 đến 28, `locale` là `vi`/`en`, múi giờ IANA |
+| U9 | Đổi mật khẩu | `curl -si -X POST $API/me/password -H "$AUTH" -H "$JSON" -d '{"currentPassword":"new-secret1","newPassword":"another-pass1"}'` | `204`. Sai mật khẩu hiện tại: `422 WRONG_PASSWORD` |
+| U10 | Khoá tài khoản | đăng nhập sai 5 lần, rồi đăng nhập đúng | 5 lần `401`, lần 6 `429 ACCOUNT_LOCKED` |
+| U11 | Bật 2FA | `curl -s -X POST $API/me/2fa/setup -H "$AUTH" \| jq`: quét `otpauthUri` (dạng QR) hoặc nhập `secret` vào ứng dụng xác thực; rồi `POST $API/me/2fa/enable` với `{"code":"<6 số trong app>"}` | `200`, `recoveryCodes` gồm 10 mã. `/me` có `twoFactorEnabled=true` |
+| U12 | Đăng nhập có 2FA | `POST $API/auth/login` | `twoFactorRequired=true`, `accessToken=null`, có `challengeToken`. Gửi `POST $API/auth/2fa/verify` với `{"challengeToken":"...","code":"<6 số hoặc mã khôi phục>"}` → token |
+| U13 | Tắt 2FA | `POST $API/me/2fa/disable` với `{"code":"..."}` | `204` |
+| U14 | Đăng nhập Google | `POST $API/auth/google` với `{"idToken":"<ID token từ Google Sign-In>"}` | Tạo tài khoản lần đầu (`hasPassword=false`, `googleLinked=true`), các lần sau đăng nhập vào tài khoản đó |
+| U15 | Xoá tài khoản | `curl -si -X DELETE $API/me -H "$AUTH" -H "$JSON" -d "{\"password\":\"...\",\"confirmEmail\":\"$EMAIL\"}"` | `204`. `GET /me` → `404`, đăng nhập → `401`; vài giây sau ví, giao dịch… đều trống. Gõ sai email: `422 CONFIRMATION_MISMATCH` |
+
+---
+
+## 11. Job đáo hạn, tái tục và thông báo
 
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
@@ -359,7 +408,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 
 ---
 
-## 11. Bảng đối chiếu quy tắc nghiệp vụ
+## 12. Bảng đối chiếu quy tắc nghiệp vụ
 
 | Quy tắc | Kiểm tra ở |
 |---|---|
@@ -368,7 +417,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi tích luỹ dừng ở ngày đáo hạn | D1 |
 | Rút trước hạn tính lãi theo lãi suất không kỳ hạn, báo rõ số lãi bị mất | D4 |
 | Không tất toán 2 lần; không tất toán trước ngày gửi | D6, D9 |
-| Tái tục gốc / gốc + lãi / không tái tục | Mục 10 |
+| Tái tục gốc / gốc + lãi / không tái tục | Mục 11 |
 | Lịch trả nợ đúng cho 4 phương thức, tổng gốc luôn đúng bằng số tiền vay | 5.1 |
 | Thanh toán trừ lãi trước gốc, kỳ cũ trước | L2, L8 |
 | Gửi lại cùng Idempotency-Key không trừ tiền 2 lần | L3 |
@@ -387,3 +436,9 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Chuyển khác tiền tệ dùng tỷ giá của user, nghịch đảo khi cần; tổng ví quy đổi về một tiền tệ | T1–T5 |
 | Gửi lại cùng Idempotency-Key không ghi/chuyển 2 lần | W2, T4 |
 | Giao dịch định kỳ đúng lịch, không trôi ngày, không ghi trùng | R1, R2 |
+| Mã email hết hạn, giới hạn số lần nhập sai và thời gian chờ gửi lại | U2, U3 |
+| Quên mật khẩu không lộ email; đặt lại mật khẩu đăng xuất mọi thiết bị | U4, U5 |
+| Sai mật khẩu 5 lần thì khoá 15 phút | U10 |
+| Refresh token xoay vòng theo phiên; đăng xuất từng thiết bị | U6, U7 |
+| 2FA: cần mã khi đăng nhập, mã khôi phục dùng một lần | U11–U13 |
+| Xoá tài khoản xoá dữ liệu ở mọi module | U15 |

@@ -24,4 +24,8 @@ interface RecurringTransactionJpaRepository extends JpaRepository<RecurringTrans
     @Modifying
     @Query("delete from RecurringTransactionJpaEntity r where r.walletId = :walletId")
     void deleteByWalletId(UUID walletId);
+
+    @Modifying
+    @Query("delete from RecurringTransactionJpaEntity r where r.ownerId = :ownerId")
+    void deleteByOwnerId(UUID ownerId);
 }

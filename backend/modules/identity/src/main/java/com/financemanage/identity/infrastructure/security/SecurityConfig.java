@@ -1,5 +1,8 @@
 package com.financemanage.identity.infrastructure.security;
 
+import com.financemanage.identity.application.GoogleTokenVerifier;
+import com.financemanage.identity.application.IdentityProperties;
+import com.financemanage.identity.application.SecretCipher;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -30,7 +33,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * {@link JwtDecoder} with {@code NimbusJwtDecoder.withIssuerLocation(...)} – controllers stay unchanged.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, IdentityProperties.class})
 class SecurityConfig {
 
     @Bean
@@ -40,6 +43,8 @@ class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/**").permitAll()
+                        // only mapped in the dev profile (DevMailboxController)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/dev/mailbox").permitAll()
                         .requestMatchers("/actuator/health/**", "/actuator/info", "/v3/api-docs/**",
                                 "/swagger-ui/**", "/swagger-ui.html", "/error").permitAll()
                         .anyRequest().authenticated())
@@ -60,6 +65,19 @@ class SecurityConfig {
     @Bean
     JwtDecoder jwtDecoder(SecretKey jwtSigningKey) {
         return NimbusJwtDecoder.withSecretKey(jwtSigningKey).macAlgorithm(MacAlgorithm.HS256).build();
+    }
+
+    @Bean
+    SecretCipher secretCipher(@Value("${app.security.encryption-key}") String encryptionKey) {
+        return new AesGcmSecretCipher(encryptionKey);
+    }
+
+    /** Google sign-in is off until {@code app.identity.google.client-ids} lists the app's OAuth client ids. */
+    @Bean
+    GoogleTokenVerifier googleTokenVerifier(IdentityProperties properties) {
+        return properties.google().clientIds().isEmpty()
+                ? new DisabledGoogleTokenVerifier()
+                : new NimbusGoogleTokenVerifier(properties.google().clientIds());
     }
 
     @Bean

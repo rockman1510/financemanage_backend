@@ -15,4 +15,8 @@ public interface AttachmentRepository {
     List<Attachment> findByTransaction(UUID transactionId);
 
     void delete(Attachment attachment);
+
+    List<Attachment> findByOwner(UUID ownerId);
+
+    void deleteByOwner(UUID ownerId);
 }

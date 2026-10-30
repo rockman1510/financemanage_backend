@@ -69,6 +69,11 @@ class WalletRepositoryAdapter implements WalletRepository {
         jpa.deleteById(wallet.getId());
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteByOwnerId(ownerId);
+    }
+
     private Wallet toDomain(WalletJpaEntity e) {
         Currency currency = Currency.getInstance(e.currency);
         return new Wallet(e.id, e.ownerId, e.name, e.type, new Money(e.initialBalance, currency),

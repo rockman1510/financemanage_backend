@@ -1,6 +1,7 @@
 package com.financemanage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,18 +13,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.financemanage.identity.application.GoogleTokenVerifier;
+import com.financemanage.identity.application.GoogleTokenVerifier.GoogleIdentity;
+import com.financemanage.identity.domain.Totp;
+import com.financemanage.identity.infrastructure.email.DevMailbox;
 import com.jayway.jsonpath.JsonPath;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -37,6 +50,24 @@ class ApiIntegrationTest {
 
     @Autowired
     private MockMvc mvc;
+    @Autowired
+    private DevMailbox mailbox;
+
+    /** Fake Google: "google|subject|email|name" is a valid ID token. */
+    @TestConfiguration
+    static class FakeGoogle {
+        @Bean
+        @Primary
+        GoogleTokenVerifier fakeGoogleTokenVerifier() {
+            return idToken -> {
+                String[] parts = idToken.split("\\|");
+                if (parts.length != 4 || !parts[0].equals("google")) {
+                    throw new BadCredentialsException("Invalid Google ID token");
+                }
+                return new GoogleIdentity(parts[1], parts[2], parts[3]);
+            };
+        }
+    }
 
     private String token;
     private final LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"));
@@ -393,6 +424,185 @@ class ApiIntegrationTest {
 
         mvc.perform(auth(delete("/api/v1/attachments/" + attachmentId))).andExpect(status().isNoContent());
         mvc.perform(auth(get("/api/v1/attachments/" + attachmentId))).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void emailVerificationPasswordResetAndAccountLock() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        String access = register(email);
+        mvc.perform(auth(get("/api/v1/me"), access)).andExpect(jsonPath("$.emailVerified").value(false))
+                .andExpect(jsonPath("$.hasPassword").value(true));
+
+        mvc.perform(auth(json(post("/api/v1/me/email/verify"), "{\"code\":\"000000x\"}"), access))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("INVALID_CODE"));
+        mvc.perform(auth(json(post("/api/v1/me/email/verify"), "{\"code\":\"%s\"}".formatted(lastCode(email))),
+                access)).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/me"), access)).andExpect(jsonPath("$.emailVerified").value(true));
+
+        String login = mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "secret123")))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        mvc.perform(json(post("/api/v1/auth/forgot-password"), "{\"email\":\"%s\"}".formatted(email)))
+                .andExpect(status().isNoContent());
+        mvc.perform(json(post("/api/v1/auth/forgot-password"), "{\"email\":\"nobody-%s\"}".formatted(email)))
+                .andExpect(status().isNoContent()); // same answer: does not reveal who is registered
+        String reset = "{\"email\":\"%s\",\"code\":\"%s\",\"newPassword\":\"brand-new-1\"}";
+        mvc.perform(json(post("/api/v1/auth/reset-password"), reset.formatted(email, "12345")))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("INVALID_CODE"));
+        mvc.perform(json(post("/api/v1/auth/reset-password"), reset.formatted(email, lastCode(email))))
+                .andExpect(status().isNoContent());
+        mvc.perform(json(post("/api/v1/auth/refresh"),
+                        "{\"refreshToken\":\"%s\"}".formatted((String) JsonPath.read(login, "$.refreshToken"))))
+                .andExpect(status().isUnauthorized()); // the reset signed every device out
+        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "brand-new-1"))).andExpect(status().isOk());
+
+        for (int i = 0; i < 5; i++) {
+            mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "wrong-pass")))
+                    .andExpect(status().isUnauthorized());
+        }
+        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "brand-new-1")))
+                .andExpect(status().isTooManyRequests()).andExpect(jsonPath("$.code").value("ACCOUNT_LOCKED"));
+    }
+
+    @Test
+    void sessionsTwoFactorProfileAndPassword() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        String phone = mvc.perform(json(post("/api/v1/auth/register"), """
+                        {"email":"%s","password":"secret123","fullName":"An","deviceName":"Điện thoại"}"""
+                        .formatted(email)))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String laptop = mvc.perform(json(post("/api/v1/auth/login"),
+                        "{\"email\":\"%s\",\"password\":\"secret123\",\"deviceName\":\"Laptop\"}".formatted(email)))
+                .andExpect(jsonPath("$.twoFactorRequired").value(false))
+                .andReturn().getResponse().getContentAsString();
+        String laptopToken = JsonPath.read(laptop, "$.accessToken");
+
+        String sessions = mvc.perform(auth(get("/api/v1/me/sessions"), laptopToken))
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[?(@.current == true)].deviceName").value("Laptop"))
+                .andReturn().getResponse().getContentAsString();
+        List<String> phoneSession = JsonPath.read(sessions, "$[?(@.deviceName == 'Điện thoại')].id");
+        mvc.perform(auth(delete("/api/v1/me/sessions/" + phoneSession.getFirst()), laptopToken))
+                .andExpect(status().isNoContent());
+        mvc.perform(json(post("/api/v1/auth/refresh"),
+                        "{\"refreshToken\":\"%s\"}".formatted((String) JsonPath.read(phone, "$.refreshToken"))))
+                .andExpect(status().isUnauthorized());
+
+        String setup = mvc.perform(auth(post("/api/v1/me/2fa/setup"), laptopToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.otpauthUri").isNotEmpty())
+                .andReturn().getResponse().getContentAsString();
+        String secret = JsonPath.read(setup, "$.secret");
+        String enabled = mvc.perform(auth(json(post("/api/v1/me/2fa/enable"),
+                        "{\"code\":\"%s\"}".formatted(Totp.code(secret, Totp.step(Instant.now())))), laptopToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.recoveryCodes", hasSize(10)))
+                .andReturn().getResponse().getContentAsString();
+        List<String> recovery = JsonPath.read(enabled, "$.recoveryCodes");
+        mvc.perform(auth(get("/api/v1/me"), laptopToken)).andExpect(jsonPath("$.twoFactorEnabled").value(true));
+
+        String challenge = mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "secret123")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.twoFactorRequired").value(true))
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String twoFactor = "{\"challengeToken\":\"%s\",\"code\":\"%s\"}";
+        String challengeToken = JsonPath.read(challenge, "$.challengeToken");
+        mvc.perform(json(post("/api/v1/auth/2fa/verify"), twoFactor.formatted(challengeToken, "000000")))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(json(post("/api/v1/auth/2fa/verify"), twoFactor.formatted(challengeToken, recovery.get(0))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isNotEmpty());
+        mvc.perform(auth(json(post("/api/v1/me/2fa/disable"), "{\"code\":\"%s\"}".formatted(recovery.get(1))),
+                laptopToken)).andExpect(status().isNoContent());
+
+        mvc.perform(auth(json(patch("/api/v1/me"), """
+                        {"fullName":"An Nguyễn","defaultCurrency":"USD","locale":"en","monthStartDay":25}"""),
+                        laptopToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.defaultCurrency").value("USD"))
+                .andExpect(jsonPath("$.monthStartDay").value(25));
+        mvc.perform(auth(json(patch("/api/v1/me"), "{\"timeZone\":\"Mars/Base\"}"), laptopToken))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("INVALID_TIME_ZONE"));
+
+        String change = "{\"currentPassword\":\"%s\",\"newPassword\":\"changed-pass1\"}";
+        mvc.perform(auth(json(post("/api/v1/me/password"), change.formatted("wrong")), laptopToken))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("WRONG_PASSWORD"));
+        mvc.perform(auth(json(post("/api/v1/me/password"), change.formatted("secret123")), laptopToken))
+                .andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/me/sessions"), laptopToken)).andExpect(jsonPath("$", hasSize(1)));
+        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "changed-pass1"))).andExpect(status().isOk());
+    }
+
+    @Test
+    void googleSignIn() throws Exception {
+        String email = UUID.randomUUID() + "@gmail.com";
+        String google = "{\"idToken\":\"google|%s|%s|Bình\"}".formatted(UUID.randomUUID(), email);
+
+        String first = mvc.perform(json(post("/api/v1/auth/google"), google))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.twoFactorRequired").value(false))
+                .andReturn().getResponse().getContentAsString();
+        mvc.perform(json(post("/api/v1/auth/google"), google)).andExpect(status().isOk());
+        mvc.perform(auth(get("/api/v1/me"), JsonPath.read(first, "$.accessToken")))
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.googleLinked").value(true))
+                .andExpect(jsonPath("$.hasPassword").value(false))
+                .andExpect(jsonPath("$.emailVerified").value(true));
+        mvc.perform(json(post("/api/v1/auth/google"), "{\"idToken\":\"forged\"}"))
+                .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
+    void deletingTheAccountDeletesItsDataEverywhere() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        String access = register(email);
+        String food = categoryId(mvc.perform(auth(get("/api/v1/categories"), access))
+                .andReturn().getResponse().getContentAsString(), "FOOD");
+        String wallet = JsonPath.read(mvc.perform(auth(json(post("/api/v1/wallets"),
+                        "{\"name\":\"Ví\",\"type\":\"CASH\",\"initialBalance\":100000}"), access))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String txId = JsonPath.read(mvc.perform(auth(json(post("/api/v1/transactions"),
+                "{\"walletId\":\"%s\",\"categoryId\":\"%s\",\"amount\":1000}".formatted(wallet, food)), access))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        mvc.perform(multipart("/api/v1/transactions/" + txId + "/attachments")
+                        .file(new MockMultipartFile("file", "bill.png", "image/png", new byte[] {1, 2}))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + access))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(json(post("/api/v1/deposits"), """
+                {"institutionName":"ACB","type":"DEMAND","principal":1000000,"annualRate":0.5,"openDate":"%s"}"""
+                .formatted(today)), access)).andExpect(status().isCreated());
+        mvc.perform(auth(json(post("/api/v1/loans"), """
+                {"counterpartyName":"Bình","direction":"LEND","principal":500000,"termMonths":1,
+                 "startDate":"%s","repaymentMethod":"INTEREST_FREE"}""".formatted(today)), access))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(json(post("/api/v1/exchange-rates"), "{\"base\":\"USD\",\"quote\":\"VND\",\"rate\":25000}"),
+                access)).andExpect(status().isOk());
+
+        mvc.perform(auth(json(delete("/api/v1/me"), "{\"password\":\"secret123\",\"confirmEmail\":\"x@y.z\"}"),
+                access)).andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("CONFIRMATION_MISMATCH"));
+        mvc.perform(auth(json(delete("/api/v1/me"),
+                        "{\"password\":\"secret123\",\"confirmEmail\":\"%s\"}".formatted(email)), access))
+                .andExpect(status().isNoContent());
+
+        mvc.perform(auth(get("/api/v1/me"), access)).andExpect(status().isNotFound());
+        mvc.perform(json(post("/api/v1/auth/login"), credentials(email, "secret123")))
+                .andExpect(status().isUnauthorized());
+        // other modules delete their data asynchronously, after the account deletion committed
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/wallets?includeArchived=true"), access)).andExpect(jsonPath("$", hasSize(0)));
+            mvc.perform(auth(get("/api/v1/transactions"), access)).andExpect(jsonPath("$.totalElements").value(0));
+            mvc.perform(auth(get("/api/v1/deposits"), access)).andExpect(jsonPath("$", hasSize(0)));
+            mvc.perform(auth(get("/api/v1/loans"), access)).andExpect(jsonPath("$", hasSize(0)));
+            mvc.perform(auth(get("/api/v1/exchange-rates"), access)).andExpect(jsonPath("$", hasSize(0)));
+        });
+    }
+
+    private String lastCode(String email) {
+        String subject = mailbox.messagesTo(email).getFirst().subject();
+        Matcher matcher = Pattern.compile("(\\d{6})").matcher(subject);
+        assertThat(matcher.find()).as("code in %s", subject).isTrue();
+        return matcher.group(1);
+    }
+
+    private static String credentials(String email, String password) {
+        return "{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, password);
     }
 
     private String createWallet(String name, String type, String currency, long initialBalance) throws Exception {

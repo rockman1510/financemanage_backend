@@ -2,128 +2,132 @@ package com.financemanage.identity.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 import com.financemanage.identity.api.IdentityEvents.UserRegistered;
-import com.financemanage.identity.domain.RefreshToken;
-import com.financemanage.identity.domain.RefreshTokenRepository;
+import com.financemanage.identity.domain.Totp;
 import com.financemanage.identity.domain.UserAccount;
-import com.financemanage.identity.domain.UserAccountRepository;
 import com.financemanage.shared.domain.DomainException;
-import java.time.Clock;
+import com.financemanage.shared.domain.TooManyAttemptsException;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 class AuthServiceTest {
 
-    private final UserAccountRepository users = mock(UserAccountRepository.class);
-    private final RefreshTokenRepository refreshTokens = mock(RefreshTokenRepository.class);
-    private final Map<String, RefreshToken> tokenStore = new HashMap<>();
-    private final List<Object> events = new ArrayList<>();
-    private final Clock clock = Clock.fixed(Instant.parse("2025-01-01T00:00:00Z"), ZoneOffset.UTC);
-    private AuthService service;
-
-    /** Reversible fake encoder keeps the test fast and deterministic. */
-    private final PasswordEncoder encoder = new PasswordEncoder() {
-        @Override
-        public String encode(CharSequence raw) {
-            return "hashed:" + raw;
-        }
-
-        @Override
-        public boolean matches(CharSequence raw, String encoded) {
-            return encoded.equals("hashed:" + raw);
-        }
-    };
-
-    private final TokenIssuer issuer = new TokenIssuer() {
-        @Override
-        public String issueAccessToken(UserAccount user) {
-            return "access-" + user.getEmail();
-        }
-
-        @Override
-        public long accessTokenTtlSeconds() {
-            return 900;
-        }
-    };
-
-    @BeforeEach
-    void setUp() {
-        when(users.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(refreshTokens.save(any())).thenAnswer(inv -> {
-            RefreshToken token = inv.getArgument(0);
-            tokenStore.put(token.getTokenHash(), token);
-            return token;
-        });
-        when(refreshTokens.findByTokenHash(any()))
-                .thenAnswer(inv -> Optional.ofNullable(tokenStore.get(inv.<String>getArgument(0))));
-        service = new AuthService(users, refreshTokens, encoder, issuer, events::add, clock, Duration.ofDays(30));
-    }
+    private final IdentityTestContext ctx = new IdentityTestContext();
+    private final AuthService auth = ctx.auth;
 
     @Test
-    void registerNormalizesEmailAndIssuesTokens() {
-        TokenPair tokens = service.register("  An@Example.com ", "secret123", "Nguyễn An");
+    void registerNormalizesEmailSendsACodeAndSignsIn() {
+        TokenPair tokens = auth.register("  An@Example.com ", "secret123", "Nguyễn An", "Pixel 8");
 
-        assertThat(tokens.accessToken()).isEqualTo("access-an@example.com");
-        assertThat(tokens.refreshToken()).isNotBlank();
+        UserAccount user = ctx.user("an@example.com");
+        assertThat(tokens.accessToken()).startsWith("access-an@example.com");
         assertThat(tokens.expiresInSeconds()).isEqualTo(900);
-        assertThat(tokenStore).hasSize(1);
-        assertThat(events).singleElement().isInstanceOfSatisfying(UserRegistered.class,
+        assertThat(user.isEmailVerified()).isFalse();
+        assertThat(ctx.events).singleElement().isInstanceOfSatisfying(UserRegistered.class,
                 e -> assertThat(e.email()).isEqualTo("an@example.com"));
+        assertThat(ctx.mails).singleElement().satisfies(m -> assertThat(m.subject()).startsWith("Mã xác thực email"));
+        assertThat(ctx.tokens.values()).singleElement()
+                .satisfies(t -> assertThat(t.getDeviceName()).isEqualTo("Pixel 8"));
     }
 
     @Test
     void registerRejectsDuplicateEmail() {
-        when(users.existsByEmail("an@example.com")).thenReturn(true);
+        auth.register("an@example.com", "secret123", "An", null);
 
-        assertThatThrownBy(() -> service.register("AN@example.com", "secret123", "An"))
+        assertThatThrownBy(() -> auth.register("AN@example.com", "secret123", "An", null))
                 .isInstanceOf(DomainException.class).extracting("code").isEqualTo("EMAIL_TAKEN");
     }
 
     @Test
-    void loginChecksPassword() {
-        UserAccount user = new UserAccount("an@example.com", "hashed:secret123", "An");
-        when(users.findByEmail("an@example.com")).thenReturn(Optional.of(user));
+    void accountIsLockedAfterFiveWrongPasswords() {
+        auth.register("an@example.com", "secret123", "An", null);
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> auth.login("an@example.com", "wrong", null))
+                    .isInstanceOf(BadCredentialsException.class);
+        }
 
-        assertThat(service.login("an@example.com", "secret123").accessToken()).isEqualTo("access-an@example.com");
-        assertThatThrownBy(() -> service.login("an@example.com", "wrong"))
+        assertThatThrownBy(() -> auth.login("an@example.com", "secret123", null))
+                .isInstanceOf(TooManyAttemptsException.class).extracting("code").isEqualTo("ACCOUNT_LOCKED");
+        ctx.clock.advance(Duration.ofMinutes(16));
+        assertThat(auth.login("an@example.com", "secret123", null).twoFactorRequired()).isFalse();
+    }
+
+    @Test
+    void unknownEmailAndWrongPasswordLookTheSame() {
+        auth.register("an@example.com", "secret123", "An", null);
+
+        assertThatThrownBy(() -> auth.login("nobody@example.com", "secret123", null))
+                .isInstanceOf(BadCredentialsException.class).hasMessage("Invalid email or password");
+        assertThatThrownBy(() -> auth.login("an@example.com", "wrong", null))
+                .isInstanceOf(BadCredentialsException.class).hasMessage("Invalid email or password");
+    }
+
+    @Test
+    void twoFactorSignInNeedsACodeAfterThePassword() {
+        auth.register("an@example.com", "secret123", "An", null);
+        UserAccount user = ctx.user("an@example.com");
+        String secret = ctx.twoFactor.setup(user.getId()).secret();
+        List<String> recovery = ctx.twoFactor.enable(user.getId(), Totp.code(secret, Totp.step(ctx.clock.instant())));
+        ctx.clock.advance(Duration.ofSeconds(30));
+
+        LoginResult first = auth.login("an@example.com", "secret123", "iPhone");
+        assertThat(first.twoFactorRequired()).isTrue();
+        assertThat(first.tokens()).isNull();
+
+        assertThatThrownBy(() -> auth.completeTwoFactor(first.challengeToken(), "000000"))
                 .isInstanceOf(BadCredentialsException.class);
+        TokenPair tokens = auth.completeTwoFactor(first.challengeToken(),
+                Totp.code(secret, Totp.step(ctx.clock.instant())));
+        assertThat(tokens.accessToken()).startsWith("access-an@example.com");
+        assertThatThrownBy(() -> auth.completeTwoFactor(first.challengeToken(), recovery.get(0)))
+                .isInstanceOf(BadCredentialsException.class); // the challenge was used
+
+        LoginResult second = auth.login("an@example.com", "secret123", null);
+        assertThat(auth.completeTwoFactor(second.challengeToken(), recovery.get(0).toLowerCase())).isNotNull();
+        LoginResult third = auth.login("an@example.com", "secret123", null);
+        assertThatThrownBy(() -> auth.completeTwoFactor(third.challengeToken(), recovery.get(0)))
+                .isInstanceOf(BadCredentialsException.class); // a recovery code works once
     }
 
     @Test
-    void refreshRotatesTokenAndRejectsReuse() {
-        UserAccount user = new UserAccount("an@example.com", "hashed:secret123", "An");
-        when(users.findById(user.getId())).thenReturn(Optional.of(user));
-        when(users.findByEmail("an@example.com")).thenReturn(Optional.of(user));
-        String original = service.login("an@example.com", "secret123").refreshToken();
+    void googleSignInCreatesThenFindsTheAccount() {
+        LoginResult created = auth.loginWithGoogle("google|g-1|binh@gmail.com|Bình", "Pixel");
+        LoginResult again = auth.loginWithGoogle("google|g-1|binh@gmail.com|Bình", "Pixel");
 
-        TokenPair rotated = service.refresh(original);
-
-        assertThat(rotated.refreshToken()).isNotEqualTo(original);
-        assertThatThrownBy(() -> service.refresh(original)).isInstanceOf(BadCredentialsException.class);
+        UserAccount user = ctx.user("binh@gmail.com");
+        assertThat(created.tokens()).isNotNull();
+        assertThat(again.tokens()).isNotNull();
+        assertThat(ctx.users).hasSize(1);
+        assertThat(user.isEmailVerified()).isTrue();
+        assertThat(user.hasPassword()).isFalse();
+        assertThat(ctx.events).singleElement().isInstanceOf(UserRegistered.class);
+        assertThatThrownBy(() -> auth.loginWithGoogle("forged", null)).isInstanceOf(BadCredentialsException.class);
     }
 
     @Test
-    void logoutRevokesRefreshToken() {
-        UserAccount user = new UserAccount("an@example.com", "hashed:secret123", "An");
-        when(users.findByEmail("an@example.com")).thenReturn(Optional.of(user));
-        String refresh = service.login("an@example.com", "secret123").refreshToken();
+    void googleSignInTakesOverAnUnverifiedAccountWithTheSameEmail() {
+        auth.register("binh@gmail.com", "attacker-pass", "Kẻ gian", null);
 
-        service.logout(refresh);
+        auth.loginWithGoogle("google|g-2|binh@gmail.com|Bình", null);
 
-        assertThat(tokenStore.get(AuthService.hash(refresh)).isRevoked()).isTrue();
+        UserAccount user = ctx.user("binh@gmail.com");
+        assertThat(user.getGoogleSubject()).isEqualTo("g-2");
+        assertThat(user.hasPassword()).isFalse(); // whoever registered the address first loses access
+        assertThat(ctx.activeSessions(user.getId())).isEqualTo(1);
+    }
+
+    @Test
+    void googleSignInLinksAVerifiedAccountAndKeepsItsPassword() {
+        auth.register("an@example.com", "secret123", "An", null);
+        UserAccount user = ctx.user("an@example.com");
+        ctx.verification.verifyEmail(user.getId(), ctx.lastCodeSentTo("an@example.com"));
+
+        auth.loginWithGoogle("google|g-3|an@example.com|An", null);
+
+        assertThat(user.getGoogleSubject()).isEqualTo("g-3");
+        assertThat(auth.login("an@example.com", "secret123", null).tokens()).isNotNull();
     }
 }

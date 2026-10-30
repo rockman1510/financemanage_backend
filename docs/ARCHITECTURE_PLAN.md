@@ -313,5 +313,9 @@ Mỗi feature độc lập → thêm feature mới không ảnh hưởng feature
   định kỳ, ảnh hoá đơn) và `currency` (tỷ giá, quy đổi). `identity` phát event `UserRegistered` để tạo danh mục mặc
   định.
 
+- **Giai đoạn 2 của phạm vi mở rộng (xong)**: `identity` mở rộng (xác thực email, quên/đổi mật khẩu, khoá tài khoản,
+  đăng nhập Google, quản lý thiết bị, hồ sơ, 2FA TOTP, xoá tài khoản). Event `UserDeleted` để mọi module tự xoá dữ
+  liệu của người dùng.
+
 Phạm vi giai đoạn tiếp theo (ví, giao dịch, ngân sách, hoá đơn, tiết kiệm, đầu tư, đa tiền tệ, đăng nhập mở rộng,
 thông báo) được chốt trong [FEATURE_SCOPE.md](FEATURE_SCOPE.md). Chia sẻ dữ liệu trong gia đình đã bị loại khỏi phạm vi.

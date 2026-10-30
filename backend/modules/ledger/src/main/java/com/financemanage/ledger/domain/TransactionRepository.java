@@ -31,4 +31,6 @@ public interface TransactionRepository {
     boolean existsByCategory(UUID categoryId);
 
     void delete(Transaction transaction);
+
+    void deleteByOwner(UUID ownerId);
 }

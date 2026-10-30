@@ -15,4 +15,6 @@ public interface WalletRepository {
     List<Wallet> findByOwner(UUID ownerId, boolean includeArchived);
 
     void delete(Wallet wallet);
+
+    void deleteByOwner(UUID ownerId);
 }

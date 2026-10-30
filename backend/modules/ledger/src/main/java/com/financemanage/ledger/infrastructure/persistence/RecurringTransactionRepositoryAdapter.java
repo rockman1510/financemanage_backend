@@ -89,6 +89,11 @@ class RecurringTransactionRepositoryAdapter implements RecurringTransactionRepos
         jpa.deleteById(rule.getId());
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteByOwnerId(ownerId);
+    }
+
     private RecurringTransaction toDomain(RecurringTransactionJpaEntity e) {
         return new RecurringTransaction(e.id, e.ownerId, e.walletId, e.categoryId, e.type,
                 Money.of(e.amount, e.currency), e.note, e.withPerson, e.frequency, e.interval, e.startDate, e.endDate,

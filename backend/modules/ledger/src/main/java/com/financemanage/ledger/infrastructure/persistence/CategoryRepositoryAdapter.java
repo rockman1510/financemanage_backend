@@ -95,6 +95,13 @@ class CategoryRepositoryAdapter implements CategoryRepository {
         entity.code = category.getCode();
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteChildrenByOwnerId(ownerId); // sub-categories reference their parent
+        jpa.deleteByOwnerId(ownerId);
+        seeds.deleteByOwnerId(ownerId);
+    }
+
     private Category toDomain(CategoryJpaEntity e) {
         return new Category(e.id, e.ownerId, e.name, e.type, e.parentId, e.icon, e.code);
     }

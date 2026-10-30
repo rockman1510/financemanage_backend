@@ -17,3 +17,5 @@ app:
       directory: build/test-attachments
   currency:
     refresh-cron: "-"
+  identity:
+    cleanup-cron: "-"

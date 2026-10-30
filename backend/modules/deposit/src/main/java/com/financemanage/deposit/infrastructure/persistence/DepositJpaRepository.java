@@ -7,6 +7,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 
 interface DepositJpaRepository extends JpaRepository<DepositJpaEntity, UUID> {
 
@@ -20,4 +22,9 @@ interface DepositJpaRepository extends JpaRepository<DepositJpaEntity, UUID> {
     List<DepositJpaEntity> findByStatusAndMaturityDateLessThanEqual(DepositStatus status, LocalDate date);
 
     List<DepositJpaEntity> findByStatusAndMaturityDate(DepositStatus status, LocalDate date);
+
+    /** Transactions go with their deposit (ON DELETE CASCADE). */
+    @Modifying
+    @Query("delete from DepositJpaEntity d where d.ownerId = :ownerId")
+    void deleteByOwnerId(UUID ownerId);
 }

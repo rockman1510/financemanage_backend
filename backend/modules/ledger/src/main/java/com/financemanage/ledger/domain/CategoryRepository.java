@@ -22,6 +22,9 @@ public interface CategoryRepository {
 
     void delete(Category category);
 
+    /** Removes the owner's categories and the "defaults created" marker. */
+    void deleteByOwner(UUID ownerId);
+
     /** Whether the default categories were already created for the owner. */
     boolean isSeeded(UUID ownerId);
 
