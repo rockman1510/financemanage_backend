@@ -17,6 +17,7 @@ import com.financemanage.ledger.domain.model.Transaction.TransferLegs;
 import com.financemanage.ledger.domain.model.TransactionFilter;
 import com.financemanage.ledger.domain.model.TransactionTotals;
 import com.financemanage.ledger.domain.model.Wallet;
+import com.financemanage.shared.domain.DomainException;
 import com.financemanage.shared.domain.Money;
 import com.financemanage.shared.domain.NotFoundException;
 import java.math.BigDecimal;
@@ -65,6 +66,9 @@ public class TransactionService {
         if (idempotencyKey != null) {
             Optional<Transaction> existing = transactions.findByIdempotencyKey(ownerId, idempotencyKey);
             if (existing.isPresent()) {
+                if (existing.get().getTransferId() != null) {
+                    throw keyReused();
+                }
                 return existing.get();
             }
         }
@@ -136,9 +140,11 @@ public class TransactionService {
 
     public TransferLegs transfer(UUID ownerId, TransferInput input, String idempotencyKey) {
         if (idempotencyKey != null) {
-            Optional<Transaction> existing = transactions.findByIdempotencyKey(ownerId, idempotencyKey)
-                    .filter(t -> t.getTransferId() != null);
+            Optional<Transaction> existing = transactions.findByIdempotencyKey(ownerId, idempotencyKey);
             if (existing.isPresent()) {
+                if (existing.get().getTransferId() == null) {
+                    throw keyReused();
+                }
                 List<Transaction> legs = transactions.findByTransfer(ownerId, existing.get().getTransferId());
                 return new TransferLegs(legs.get(0), legs.get(1));
             }
@@ -230,6 +236,12 @@ public class TransactionService {
         return new TransactionSnapshot(t.getId(), t.getOwnerId(), t.getWalletId(), t.getType().name(),
                 t.getAmount().amount(), t.signedAmount().amount(), t.getAmount().currencyCode(), t.getCategoryId(),
                 t.getOccurredOn(), t.isExcludeFromReport(), t.getTransferId(), t.getRecurringId());
+    }
+
+    /** The key was already used for a different kind of request (a transaction vs a transfer). */
+    private static DomainException keyReused() {
+        return new DomainException("IDEMPOTENCY_KEY_REUSED",
+                "This Idempotency-Key was already used for a different request");
     }
 
     private Transaction load(UUID id, UUID ownerId) {
