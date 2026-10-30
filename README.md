@@ -34,7 +34,7 @@ cd backend && ./gradlew build        # unit test + kiểm tra ranh giới module
 cd mobile && npm test && npm run typecheck && npm run lint
 ```
 
-Kiểm chứng business flow qua API (curl + jq, 184 kiểm tra): xem [docs/API_TEST_GUIDE.md](docs/API_TEST_GUIDE.md) và
+Kiểm chứng business flow qua API (curl + jq, 192 kiểm tra): xem [docs/API_TEST_GUIDE.md](docs/API_TEST_GUIDE.md) và
 `scripts/api-flow-test.sh`.
 
 ## Kiến trúc tóm tắt
@@ -52,7 +52,7 @@ backend/
 │  ├─ bill/              Hoá đơn định kỳ, thanh toán qua sổ thu chi (saga), nhắc hạn
 │  ├─ deposit/           Tiền gửi: domain thuần Java + Strategy tính lãi, JPA adapter, REST, job đáo hạn
 │  ├─ loan/              Vay nợ: Strategy lịch trả nợ, trả nợ idempotent, trả trước hạn, lãi thả nổi, job nhắc nợ
-│  ├─ notification/      Lắng nghe domain event → tạo thông báo (port NotificationSender)
+│  ├─ notification/      Event → thông báo trong app + push Expo, cài đặt, nhắc ghi chép hằng ngày, chống trùng
 │  └─ reporting/         Dashboard / tài sản ròng / dòng tiền (CQRS-lite, cache + evict theo event)
 └─ app/                  Spring Boot application, cấu hình, Flyway, integration test
 ```

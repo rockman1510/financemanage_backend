@@ -36,6 +36,8 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | `app.currency.refresh-cron` | `0 0 6 * * *` | Job lấy tỷ giá từ các `ExchangeRateProvider` (không làm gì khi chưa có provider) |
 | `app.budget.warning-percent` | `80` | Mức % ngân sách phát cảnh báo (100% luôn cảnh báo) |
 | `app.bill.reminder-cron` | `0 20 0 * * *` | Job nhắc hoá đơn sắp đến hạn / quá hạn |
+| `EXPO_PUSH_ENABLED`, `EXPO_ACCESS_TOKEN` (`app.notification.expo.*`) | `true`, trống | Gửi push qua Expo Push API; access token chỉ cần khi bật "enhanced push security" trong dự án Expo |
+| `app.notification.daily-reminder-cron` | `0 0 * * * *` | Job nhắc ghi chép (mỗi giờ, theo giờ nhắc + múi giờ của từng người) |
 | `app.reporting.upcoming-days`, `projection-months` | `30`, `12` | Dashboard |
 | `spring.cache.type` | `simple` | Đổi sang `redis` (thêm `spring-boot-starter-data-redis`) khi chạy nhiều instance |
 
@@ -57,13 +59,14 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | Tiền gửi | `GET/POST /deposits`, `POST /deposits/preview`, `GET/PATCH/DELETE /deposits/{id}`, `GET /deposits/{id}/settlement-quote`, `POST /deposits/{id}/settle` |
 | Vay nợ | `GET/POST /loans`, `POST /loans/preview-schedule`, `GET/PATCH/DELETE /loans/{id}`, `POST /loans/{id}/repayments` (header `Idempotency-Key`), `POST /loans/{id}/prepayments`, `POST /loans/{id}/rate-changes` |
 | Báo cáo | `GET /dashboard` |
-| Thông báo | `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/{id}/read` |
+| Thông báo | `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/{id}/read`, `POST /notifications/read-all`, `GET/PUT /notifications/preferences`, `GET/POST /notifications/devices`, `DELETE /notifications/devices/{token}` |
 
 ## Mở rộng
 
 - **Cách tính lãi mới**: implement `InterestCalculator`, thêm giá trị vào `InterestCalculationMethod`, khai báo bean.
 - **Phương thức trả nợ mới**: kế thừa `MonthlyScheduleGenerator` (hoặc implement `RepaymentScheduleGenerator`).
-- **Kênh thông báo mới** (FCM, email, Zalo…): implement `NotificationSender`.
+- **Kênh thông báo mới** (gửi FCM/APNs trực tiếp, email, Zalo…): implement `NotificationSender`. Push qua Expo đã có
+  (`ExpoPushNotificationSender`).
 - **Nhà cung cấp email khác** (API HTTP thay cho SMTP): implement `EmailSender`.
 - **Nguồn tỷ giá tự động** (bảng tỷ giá ngân hàng…): implement `ExchangeRateProvider`, khai báo bean.
 - **Lưu ảnh hoá đơn lên object storage** (S3, R2…): implement `AttachmentStorage` thay cho bản lưu đĩa local.

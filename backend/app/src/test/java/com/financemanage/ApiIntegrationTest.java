@@ -2,12 +2,14 @@ package com.financemanage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -668,6 +670,59 @@ class ApiIntegrationTest {
                 .andExpect(status().isNotFound());
         mvc.perform(auth(delete("/api/v1/budgets/" + budgetId))).andExpect(status().isNoContent());
         mvc.perform(auth(delete("/api/v1/bills/" + billId))).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void notificationsPreferencesDevicesAndBudgetAlerts() throws Exception {
+        mvc.perform(auth(get("/api/v1/notifications/preferences")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dailyReminderEnabled").value(true))
+                .andExpect(jsonPath("$.dailyReminderTime").value("20:00:00"))
+                .andExpect(jsonPath("$.disabledTypes", hasSize(0)));
+        mvc.perform(auth(json(put("/api/v1/notifications/preferences"), """
+                        {"disabledTypes":["BUDGET_EXCEEDED"],"dailyReminderEnabled":true,"dailyReminderTime":"21:00",
+                         "quietStart":"22:00","quietEnd":"07:00"}""")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.disabledTypes[0]").value("BUDGET_EXCEEDED"))
+                .andExpect(jsonPath("$.quietStart").value("22:00:00"));
+        mvc.perform(auth(json(put("/api/v1/notifications/preferences"), "{\"quietStart\":\"22:00\"}")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("INVALID_QUIET_HOURS"));
+
+        String token = "ExponentPushToken[" + UUID.randomUUID().toString().replace("-", "") + "]";
+        mvc.perform(auth(json(post("/api/v1/notifications/devices"),
+                        "{\"token\":\"%s\",\"platform\":\"ios\",\"deviceName\":\"iPhone\"}".formatted(token))))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(json(post("/api/v1/notifications/devices"), "{\"token\":\"not-a-token\"}")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("INVALID_PUSH_TOKEN"));
+        mvc.perform(auth(get("/api/v1/notifications/devices"))).andExpect(jsonPath("$", hasSize(1)));
+
+        String categories = mvc.perform(auth(get("/api/v1/categories"))).andReturn().getResponse()
+                .getContentAsString();
+        String food = categoryId(categories, "FOOD");
+        String cash = createWallet("Tiền mặt", "CASH", "VND", 5_000_000);
+        mvc.perform(auth(json(post("/api/v1/budgets"),
+                "{\"name\":\"Ăn uống\",\"amount\":100000,\"categoryIds\":[\"%s\"],\"period\":\"MONTHLY\"}"
+                        .formatted(food)))).andExpect(status().isCreated());
+        String spend = "{\"walletId\":\"%s\",\"categoryId\":\"%s\",\"amount\":%d}";
+        mvc.perform(auth(json(post("/api/v1/transactions"), spend.formatted(cash, food, 85_000))))
+                .andExpect(status().isCreated());
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                mvc.perform(auth(get("/api/v1/notifications")))
+                        .andExpect(jsonPath("$[?(@.type == 'BUDGET_WARNING')]", hasSize(1))));
+        mvc.perform(auth(json(post("/api/v1/transactions"), spend.formatted(cash, food, 30_000))))
+                .andExpect(status().isCreated());
+        Thread.sleep(500); // give the listeners time: the exceeded alert is turned off and must not appear
+        mvc.perform(auth(get("/api/v1/notifications")))
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].body").value(containsString("85.000 VND")));
+
+        mvc.perform(auth(get("/api/v1/notifications/unread-count"))).andExpect(jsonPath("$.count").value(1));
+        mvc.perform(auth(post("/api/v1/notifications/read-all"))).andExpect(jsonPath("$.marked").value(1));
+        mvc.perform(auth(get("/api/v1/notifications/unread-count"))).andExpect(jsonPath("$.count").value(0));
+        mvc.perform(auth(delete("/api/v1/notifications/devices/" + token))).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/notifications/devices"))).andExpect(jsonPath("$", hasSize(0)));
     }
 
     private String lastCode(String email) {

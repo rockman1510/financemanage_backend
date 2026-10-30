@@ -32,13 +32,22 @@ public class Notification {
     private Instant createdAt;
     @Column(name = "read_at")
     private Instant readAt;
+    /** Identifies the fact notified (e.g. a bill's due date) so a job running twice does not notify it twice. */
+    @Column(name = "dedup_key")
+    private String dedupKey;
 
     protected Notification() {
     }
 
     public Notification(UUID ownerId, NotificationType type, String title, String body, String referenceType,
                         UUID referenceId, Instant createdAt) {
+        this(ownerId, type, title, body, referenceType, referenceId, null, createdAt);
+    }
+
+    public Notification(UUID ownerId, NotificationType type, String title, String body, String referenceType,
+                        UUID referenceId, String dedupKey, Instant createdAt) {
         this.id = UUID.randomUUID();
+        this.dedupKey = dedupKey;
         this.ownerId = ownerId;
         this.type = type;
         this.title = title;
@@ -63,4 +72,5 @@ public class Notification {
     public UUID getReferenceId() { return referenceId; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getReadAt() { return readAt; }
+    public String getDedupKey() { return dedupKey; }
 }

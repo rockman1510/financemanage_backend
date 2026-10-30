@@ -5,7 +5,7 @@ thức, bạn tự tính lại được bằng máy tính hoặc Excel.
 
 Có 3 cách, từ nhanh đến chi tiết:
 
-1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 184 kiểm tra, mỗi dòng in ✔ hoặc ✘.
+1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 192 kiểm tra, mỗi dòng in ✔ hoặc ✘.
 2. **Gọi tay từng bước bằng curl** (mục 3 trở đi): copy từng lệnh, so kết quả với giá trị kỳ vọng.
 3. **Swagger UI**: `http://localhost:8080/swagger-ui.html`. Bấm *Authorize* và dán access token rồi thử từng endpoint.
 
@@ -25,7 +25,7 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
-  bạn thấy kết quả ngay. Chỉ cần khi test mục 12 (job).
+  bạn thấy kết quả ngay. Chỉ cần khi test mục 13 (job).
 - Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
   giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
@@ -39,8 +39,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 184 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 15 (job) được bỏ
-qua (còn 175 kiểm tra). Phần mã gửi qua email (mục 14) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 192 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 16 (job) được bỏ
+qua (còn 183 kiểm tra). Phần mã gửi qua email (mục 15) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -361,7 +361,30 @@ Quy tắc hoá đơn:
 
 ---
 
-## 11. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
+## 11. Thông báo: push, cài đặt, nhắc ghi chép
+
+Quy tắc:
+
+- Thông báo luôn được lưu trong app (`GET $API/notifications`, 50 cái mới nhất). Nếu thiết bị đã đăng ký push token
+  Expo (`ExponentPushToken[…]`) thì được đẩy qua **Expo Push** (Expo chuyển tiếp sang FCM/APNs). Token Expo báo
+  `DeviceNotRegistered` (app đã gỡ) tự bị xoá. Lỗi gửi push chỉ ghi log, không ảnh hưởng thông báo trong app.
+- **Cài đặt**: `disabledTypes` = các loại không tạo thông báo; `quietStart`–`quietEnd` (có thể qua nửa đêm) = vẫn lưu
+  trong app nhưng **không đẩy push**; nhắc ghi chép hằng ngày bật/tắt và giờ nhắc riêng.
+- **Nhắc ghi chép**: job chạy đầu mỗi giờ (`app.notification.daily-reminder-cron`), nhắc người dùng đến giờ nhắc
+  theo múi giờ của họ (lấy từ hồ sơ) **nếu hôm nay chưa tự ghi giao dịch nào**; mỗi ngày tối đa một lần.
+- Mỗi sự việc chỉ thông báo một lần, kể cả khi job hoặc event chạy lại.
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| N1 | Cảnh báo ngân sách | Sau B3 (chi 85% ngân sách): `curl -s $API/notifications -H "$AUTH" \| jq '.[] \| {type,body}'` | Có đúng 1 `BUDGET_WARNING`: "Ngân sách "Ăn uống" đã dùng 850.000 VND / 1.000.000 VND (85%)." |
+| N2 | Xem / đổi cài đặt | `curl -s $API/notifications/preferences -H "$AUTH" \| jq`; `curl -s -X PUT $API/notifications/preferences -H "$AUTH" -H "$JSON" -d '{"disabledTypes":["BILL_DUE_SOON"],"dailyReminderTime":"21:00","quietStart":"22:00","quietEnd":"07:00"}' \| jq` | Mặc định: `dailyReminderEnabled=true`, `20:00:00`. Sau khi đổi: giá trị mới. Chỉ có `quietStart`: `422 INVALID_QUIET_HOURS` |
+| N3 | Đăng ký push | `curl -s -X POST $API/notifications/devices -H "$AUTH" -H "$JSON" -d '{"token":"ExponentPushToken[xxxxxxxxxxxx]","platform":"android","deviceName":"Pixel"}'` | `201`; `GET $API/notifications/devices` có thiết bị. Token sai định dạng: `422 INVALID_PUSH_TOKEN` |
+| N4 | Đánh dấu tất cả đã đọc | `curl -s -X POST $API/notifications/read-all -H "$AUTH"` | `{"marked":n}`; `unread-count` về `0` |
+| N5 | Huỷ push | `curl -si -X DELETE "$API/notifications/devices/ExponentPushToken%5Bxxxxxxxxxxxx%5D" -H "$AUTH"` (mã hoá `[ ]`) | `204` |
+
+---
+
+## 12. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
 
 Dùng **một user mới**, đăng ký kèm `deviceName`. Lấy mã trong email:
 
@@ -408,7 +431,7 @@ Quy tắc:
 
 ---
 
-## 12. Job đáo hạn, tái tục và thông báo
+## 13. Job đáo hạn, tái tục và thông báo
 
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
@@ -441,16 +464,18 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | `INSTALLMENT_DUE_SOON` | Có kỳ trả nợ đến hạn đúng **3 ngày** sau hôm nay (`app.loan.reminder-days-before`) |
 | `INSTALLMENT_OVERDUE` | Có kỳ đến hạn **hôm qua** mà chưa trả đủ |
 | `LOAN_PAID_OFF` | Khoản vay vừa được trả hết |
+| `BUDGET_WARNING` / `BUDGET_EXCEEDED` | Ngân sách chạm 80% / 100% trong kỳ hiện tại (mục 10) |
+| `BILL_DUE_SOON` / `BILL_OVERDUE` / `BILL_PAYMENT_FAILED` | Hoá đơn còn `remindDaysBefore` ngày / quá hạn hôm qua / sổ thu chi từ chối thanh toán |
+| `DAILY_REMINDER` | Đúng giờ nhắc (mặc định 20:00 theo múi giờ hồ sơ) mà hôm nay chưa ghi giao dịch nào |
 
 Đánh dấu đã đọc: `POST $API/notifications/{id}/read` → `204`. Xem số chưa đọc: `GET $API/notifications/unread-count`.
 
-> **Hạn chế đã biết:** job nhắc nhở không chống trùng. Nếu job chạy nhiều lần trong cùng một ngày (như cron 10 giây
-> ở đây, hoặc khi khởi động lại app rồi job chạy thêm lần nữa), các thông báo `*_SOON` và `INSTALLMENT_OVERDUE`
-> sẽ bị lặp. Với cron mặc định mỗi ngày 1 lần thì không xảy ra.
+> Mỗi sự việc chỉ được thông báo **một lần** (khoá chống trùng theo loại + đối tượng + ngày), kể cả khi job chạy nhiều
+> lần trong ngày (như cron 10 giây ở đây) hoặc app khởi động lại.
 
 ---
 
-## 13. Bảng đối chiếu quy tắc nghiệp vụ
+## 14. Bảng đối chiếu quy tắc nghiệp vụ
 
 | Quy tắc | Kiểm tra ở |
 |---|---|
@@ -459,7 +484,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi tích luỹ dừng ở ngày đáo hạn | D1 |
 | Rút trước hạn tính lãi theo lãi suất không kỳ hạn, báo rõ số lãi bị mất | D4 |
 | Không tất toán 2 lần; không tất toán trước ngày gửi | D6, D9 |
-| Tái tục gốc / gốc + lãi / không tái tục | Mục 12 |
+| Tái tục gốc / gốc + lãi / không tái tục | Mục 13 |
 | Lịch trả nợ đúng cho 4 phương thức, tổng gốc luôn đúng bằng số tiền vay | 5.1 |
 | Thanh toán trừ lãi trước gốc, kỳ cũ trước | L2, L8 |
 | Gửi lại cùng Idempotency-Key không trừ tiền 2 lần | L3 |
@@ -486,3 +511,4 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Xoá tài khoản xoá dữ liệu ở mọi module | U15 |
 | Ngân sách tính cả danh mục con, quy đổi tiền tệ, gợi ý mức chi mỗi ngày | B1–B4 |
 | Thanh toán hoá đơn ghi khoản chi qua sổ thu chi (saga), kỳ sau không trôi ngày | H1–H4 |
+| Thông báo chống trùng, tôn trọng loại bị tắt và giờ yên lặng | N1, N2, mục 13 |
