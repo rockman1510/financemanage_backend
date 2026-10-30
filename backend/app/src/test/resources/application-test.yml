@@ -21,6 +21,8 @@ app:
     cleanup-cron: "-"
   bill:
     reminder-cron: "-"
+  saving:
+    auto-contribution-cron: "-"
   notification:
     daily-reminder-cron: "-"
     expo:

@@ -10,5 +10,7 @@ public enum NotificationType {
     /** The ledger refused a bill payment; the bill is due again */
     BILL_PAYMENT_FAILED,
     /** Evening reminder to record the day's spending (only when nothing was recorded that day) */
-    DAILY_REMINDER
+    DAILY_REMINDER,
+    /** A savings goal reached 50% or 100% */
+    SAVING_GOAL_MILESTONE
 }

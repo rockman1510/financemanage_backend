@@ -11,6 +11,7 @@ import com.financemanage.deposit.domain.model.InterestPaymentMethod;
 import com.financemanage.deposit.domain.model.NewDeposit;
 import com.financemanage.deposit.domain.model.RolloverPolicy;
 import com.financemanage.deposit.domain.model.SettlementQuote;
+import com.financemanage.deposit.domain.model.WalletLinkStatus;
 import com.financemanage.shared.domain.Money;
 import com.financemanage.shared.domain.Percentage;
 import jakarta.validation.constraints.DecimalMax;
@@ -46,7 +47,8 @@ final class DepositDtos {
             InterestPaymentMethod interestPaymentMethod,
             RolloverPolicy rolloverPolicy,
             InterestCalculationMethod calculationMethod,
-            @Size(max = 500) String note) {
+            @Size(max = 500) String note,
+            UUID fromWalletId) {
 
         NewDeposit toSpec(UUID ownerId) {
             return new NewDeposit(ownerId, institutionName, accountNumber, type,
@@ -60,7 +62,8 @@ final class DepositDtos {
                                 @Size(max = 500) String note) {
     }
 
-    record SettleDepositRequest(LocalDate date) {
+    /** {@code toWalletId}: optional wallet that receives the settled amount. */
+    record SettleDepositRequest(LocalDate date, UUID toWalletId) {
     }
 
     record TransactionResponse(UUID id, DepositTransactionType type, BigDecimal amount, LocalDate occurredOn) {
@@ -72,7 +75,8 @@ final class DepositDtos {
             LocalDate openDate, LocalDate maturityDate, InterestPaymentMethod interestPaymentMethod,
             RolloverPolicy rolloverPolicy, InterestCalculationMethod calculationMethod, DepositStatus status,
             String note, LocalDate settledOn, BigDecimal settledAmount, BigDecimal accruedInterest,
-            BigDecimal expectedInterestAtMaturity, List<TransactionResponse> transactions) {
+            BigDecimal expectedInterestAtMaturity, List<TransactionResponse> transactions, UUID fundingWalletId,
+            WalletLinkStatus fundingStatus, UUID payoutWalletId, WalletLinkStatus payoutStatus) {
 
         static DepositResponse from(DepositView view) {
             Deposit d = view.deposit();
@@ -84,7 +88,8 @@ final class DepositDtos {
                     plain(view.expectedInterestAtMaturity()),
                     d.getTransactions().stream()
                             .map(t -> new TransactionResponse(t.id(), t.type(), plain(t.amount()), t.occurredOn()))
-                            .toList());
+                            .toList(), d.getFundingWalletId(), d.getFundingStatus(), d.getPayoutWalletId(),
+                    d.getPayoutStatus());
         }
     }
 

@@ -14,6 +14,8 @@ public interface DepositRepository {
 
     Optional<Deposit> findByIdAndOwner(UUID id, UUID ownerId);
 
+    Optional<Deposit> findById(UUID id);
+
     List<Deposit> findByOwner(UUID ownerId, DepositStatus status);
 
     List<Deposit> findActiveMaturingOnOrBefore(LocalDate date);
