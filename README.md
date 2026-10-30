@@ -51,6 +51,7 @@ backend/
 │  ├─ budget/            Ngân sách theo danh mục/ví/kỳ, gợi ý chi mỗi ngày, cảnh báo 80%/100%
 │  ├─ bill/              Hoá đơn định kỳ, thanh toán qua sổ thu chi (saga), nhắc hạn
 │  ├─ saving/            Mục tiêu tiết kiệm: nạp/rút qua ví, trích tự động, làm tròn chi tiêu, mốc 50%/100%
+│  ├─ investment/        Đầu tư: tài sản, mua/bán theo giá vốn bình quân, cổ tức, giá, danh mục
 │  ├─ deposit/           Tiền gửi: domain thuần Java + Strategy tính lãi, JPA adapter, REST, job đáo hạn
 │  ├─ loan/              Vay nợ: Strategy lịch trả nợ, trả nợ idempotent, trả trước hạn, lãi thả nổi, job nhắc nợ
 │  ├─ notification/      Event → thông báo trong app + push Expo, cài đặt, nhắc ghi chép hằng ngày, chống trùng

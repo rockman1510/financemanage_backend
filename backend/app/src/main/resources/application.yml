@@ -19,7 +19,7 @@ spring:
   flyway:
     # every module ships its own scripts under db/migration/<module> (version ranges: common 1-99,
     # identity 100+, deposit 200+, loan 300+, notification 400+, ledger 500+, currency 600+,
-    # budget 700+, bill 800+, saving 900+)
+    # budget 700+, bill 800+, saving 900+, investment 1000+)
     locations: classpath:db/migration
     out-of-order: true
   modulith:
@@ -86,6 +86,9 @@ app:
     reminder-cron: "0 20 0 * * *"
   saving:
     auto-contribution-cron: "0 40 0 * * *"
+  investment:
+    # "-" = off: prices are entered by hand until a PriceProvider for a price feed is added
+    price-refresh-cron: ${INVESTMENT_PRICE_CRON:-}
   notification:
     daily-reminder-cron: "0 0 * * * *"
     expo:
