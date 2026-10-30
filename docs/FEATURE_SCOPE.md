@@ -24,7 +24,7 @@ Mức độ: **MVP** là bản tối thiểu, **Mở rộng** là bản đầy �
 | 7 | Báo cáo và thống kê | MVP | `reporting` (đã có) | Một phần (dashboard tiền gửi/vay nợ) |
 | 8 | Đa tiền tệ | MVP | `currency` | Xong (GĐ 1); nguồn tỷ giá tự động chưa có provider |
 | 9 | Đăng ký và đăng nhập | **Mở rộng** (Google, không làm Apple) | `identity` | Xong (GĐ 2) |
-| 10 | Hệ thống thông báo | MVP | `notification` (đã có) | Một phần (in-app) |
+| 10 | Hệ thống thông báo | MVP | `notification` | Xong (GĐ 4) |
 
 Vay nợ (`loan`) đã có từ trước và giữ nguyên.
 

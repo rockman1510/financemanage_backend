@@ -84,6 +84,12 @@ app:
     warning-percent: 80
   bill:
     reminder-cron: "0 20 0 * * *"
+  notification:
+    daily-reminder-cron: "0 0 * * * *"
+    expo:
+      # push through the Expo Push API (FCM/APNs); token only needed with Expo "enhanced push security"
+      enabled: ${EXPO_PUSH_ENABLED:true}
+      access-token: ${EXPO_ACCESS_TOKEN:}
   reporting:
     upcoming-days: 30
     projection-months: 12
