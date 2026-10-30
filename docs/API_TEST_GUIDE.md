@@ -25,7 +25,7 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
-  bạn thấy kết quả ngay. Chỉ cần khi test mục 15 (job).
+  bạn thấy kết quả ngay. Chỉ cần khi test mục 16 (job).
 - Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
   giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
@@ -39,8 +39,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 225 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 18 (job) được bỏ
-qua (còn 216 kiểm tra). Phần mã gửi qua email (mục 17) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 236 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 19 (job) được bỏ
+qua (còn 227 kiểm tra). Phần mã gửi qua email (mục 18) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -453,7 +453,39 @@ Quy tắc:
 
 ---
 
-## 14. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
+## 14. Báo cáo: thu chi, danh mục, dòng tiền, tài sản ròng, CSV
+
+Dùng **một user mới** có ví `$CASH` (10.000.000 VND). Ghi tháng này: lương 20tr (`SALARY`), ăn uống 3tr (`FOOD`), cà
+phê 1tr (`FOOD_COFFEE`, danh mục con của Ăn uống), taxi 500k rồi xoá; tháng trước: ăn uống 2tr.
+
+Quy tắc:
+
+- Báo cáo đọc **read model riêng** (`reporting.entry`), dựng từ event giao dịch của sổ thu chi (bất đồng bộ, vài trăm
+  ms sau khi ghi). Lần đầu người dùng xem báo cáo, giao dịch có sẵn được nạp từ sổ thu chi. Event đến lệch thứ tự không
+  làm sai dữ liệu (giao dịch đã xoá giữ "bia mộ"). `POST /reports/rebuild` nạp lại toàn bộ (công cụ hỗ trợ).
+- `from`/`to` mặc định là tháng hiện tại, tối đa 10 năm; `currency` mặc định VND, quy đổi bằng tỷ giá của người dùng
+  tại cuối kỳ (hoặc hôm nay nếu kỳ chưa hết), thiếu tỷ giá → `422 EXCHANGE_RATE_MISSING`.
+- Chỉ **thu** và **chi** được tính; chuyển tiền, điều chỉnh số dư và khoản "không tính vào báo cáo" bị bỏ qua. Tiền
+  chuyển sang/về tiết kiệm, đầu tư, tiền gửi (`EXTERNAL_*`) chỉ có trong **dòng tiền** (`externalIn/Out`).
+- **Kỳ trước**: cùng số tháng nếu kỳ là các tháng trọn vẹn, nếu không thì cùng số ngày ngay trước. `savingsRate` =
+  chênh lệch / thu; `incomeChange`/`expenseChange` là % thay đổi so với kỳ trước (null nếu kỳ trước bằng 0).
+- **Tài sản ròng** = ví (trừ ví "không tính vào tổng") + tiết kiệm + đầu tư (giá trị thị trường) + tiền gửi (gốc + lãi
+  tích luỹ) + cho vay − đi vay, quy đổi một tiền tệ. Được cache theo người dùng và ngày (bộ nhớ hoặc Redis,
+  `CACHE_TYPE=redis`), xoá cache ngay khi có thay đổi.
+- CSV: UTF-8 có BOM (Excel hiển thị đúng tiếng Việt), ô bắt đầu bằng `= + - @` được thêm `'` để tránh công thức.
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| R1 | Tổng kỳ | `curl -s $API/reports/summary -H "$AUTH" \| jq` | `income=20000000`, `expense=4000000` (taxi đã xoá không tính), `net=16000000`, `savingsRate=80`, `previous.expense=2000000`, `expenseChange=100` |
+| R2 | Theo danh mục | `curl -s "$API/reports/categories?type=EXPENSE" -H "$AUTH" \| jq` | `total=4000000`; `Ăn uống` 100% với `children[0]` = `Cà phê` 25% |
+| R3 | Dòng tiền | Nạp 2tr vào một mục tiêu tiết kiệm, rồi `curl -s "$API/reports/cash-flow?from=<ngày 1 tháng trước>&to=<hôm nay>" -H "$AUTH" \| jq` | 2 điểm theo tháng; tháng này `externalOut=2000000`, `cashFlow=14000000`. `granularity=DAY` cho từng ngày (tối đa 366 ngày) |
+| R4 | Tài sản ròng | `curl -s $API/reports/net-worth -H "$AUTH" \| jq` | `netWorth=24000000`: ví 22tr + tiết kiệm 2tr. Tạo khoản đi vay 5tr → gọi lại: `liabilities=5000000`, `netWorth=19000000` |
+| R5 | Xuất CSV | `curl -s "$API/reports/transactions.csv?from=<ngày 1 tháng trước>&to=<hôm nay>" -H "$AUTH" -o giao-dich.csv` | Tiêu đề + 5 dòng (`date,type,wallet,category,amount,currency,source,excluded`) |
+| R6 | Kỳ sai | `GET $API/reports/summary?from=<hôm nay>&to=<tháng trước>` | `422 INVALID_PERIOD` |
+
+---
+
+## 15. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
 
 Dùng **một user mới**, đăng ký kèm `deviceName`. Lấy mã trong email:
 
@@ -500,7 +532,7 @@ Quy tắc:
 
 ---
 
-## 15. Job đáo hạn, tái tục và thông báo
+## 16. Job đáo hạn, tái tục và thông báo
 
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
@@ -544,7 +576,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 
 ---
 
-## 16. Bảng đối chiếu quy tắc nghiệp vụ
+## 17. Bảng đối chiếu quy tắc nghiệp vụ
 
 | Quy tắc | Kiểm tra ở |
 |---|---|
@@ -553,7 +585,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi tích luỹ dừng ở ngày đáo hạn | D1 |
 | Rút trước hạn tính lãi theo lãi suất không kỳ hạn, báo rõ số lãi bị mất | D4 |
 | Không tất toán 2 lần; không tất toán trước ngày gửi | D6, D9 |
-| Tái tục gốc / gốc + lãi / không tái tục | Mục 15 |
+| Tái tục gốc / gốc + lãi / không tái tục | Mục 16 |
 | Lịch trả nợ đúng cho 4 phương thức, tổng gốc luôn đúng bằng số tiền vay | 5.1 |
 | Thanh toán trừ lãi trước gốc, kỳ cũ trước | L2, L8 |
 | Gửi lại cùng Idempotency-Key không trừ tiền 2 lần | L3 |
@@ -580,9 +612,13 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Xoá tài khoản xoá dữ liệu ở mọi module | U15 |
 | Ngân sách tính cả danh mục con, quy đổi tiền tệ, gợi ý mức chi mỗi ngày | B1–B4 |
 | Thanh toán hoá đơn ghi khoản chi qua sổ thu chi (saga), kỳ sau không trôi ngày | H1–H4 |
-| Thông báo chống trùng, tôn trọng loại bị tắt và giờ yên lặng | N1, N2, mục 15 |
+| Thông báo chống trùng, tôn trọng loại bị tắt và giờ yên lặng | N1, N2, mục 16 |
 | Nạp/rút mục tiêu qua sổ thu chi (không tính là thu chi), hoàn lại khi bị từ chối, làm tròn, trích tự động, mốc 50%/100% | S1–S6 |
 | Sổ tiết kiệm trừ tiền ví khi mở, cộng vào ví khi tất toán | S7 |
 | Giá vốn bình quân gồm phí; bán tính lãi đã thực hiện trên giá vốn bình quân; không bán quá số nắm giữ | I2–I4 |
 | Tiền mua/bán qua ví không tính là thu chi; cổ tức có danh mục là khoản thu | I2, I5 |
 | Lãi chưa thực hiện theo giá mới nhất; danh mục quy đổi một tiền tệ, phân bổ theo loại | I6–I8 |
+| Báo cáo chỉ tính thu/chi (không tính chuyển tiền, điều chỉnh, khoản đã xoá); so sánh kỳ trước | R1 |
+| Danh mục con gộp vào danh mục cha | R2 |
+| Dòng tiền gồm tiền chuyển sang tiết kiệm/đầu tư/tiền gửi; đủ mọi kỳ kể cả kỳ trống | R3 |
+| Tài sản ròng gồm ví, tiết kiệm, đầu tư, tiền gửi, cho vay − đi vay; cache làm mới ngay khi đổi | R4 |

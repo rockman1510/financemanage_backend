@@ -328,6 +328,10 @@ Mỗi feature độc lập → thêm feature mới không ảnh hưởng feature
   trích tự động, làm tròn, mốc 50%/100%) và `deposit` nối với ví khi mở/tất toán.
 - **Giai đoạn 6 (xong)**: `investment` (tài sản, mua/bán theo giá vốn bình quân, cổ tức, giá nhập tay qua port
   `PriceProvider`, danh mục quy đổi tiền tệ; tiền đi qua ví bằng `RecordExternalTransaction`, nguồn `INVESTMENT`).
+- **Giai đoạn 7 (xong)**: `reporting` có read model `reporting.entry` dựng từ event giao dịch của `ledger` (chịu được
+  event lệch thứ tự, tự nạp lần đầu qua `LedgerQueryApi.transactions`); báo cáo thu/chi theo kỳ + so sánh kỳ trước,
+  theo danh mục, dòng tiền, tài sản ròng (ví, tiết kiệm, đầu tư, tiền gửi, vay), xuất CSV; cache `simple` hoặc Redis
+  (`CACHE_TYPE=redis`).
 
 Phạm vi giai đoạn tiếp theo (ví, giao dịch, ngân sách, hoá đơn, tiết kiệm, đầu tư, đa tiền tệ, đăng nhập mở rộng,
 thông báo) được chốt trong [FEATURE_SCOPE.md](FEATURE_SCOPE.md). Chia sẻ dữ liệu trong gia đình đã bị loại khỏi phạm vi.

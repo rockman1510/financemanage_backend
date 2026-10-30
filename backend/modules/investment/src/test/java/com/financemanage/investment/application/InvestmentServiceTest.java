@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.financemanage.currency.api.CurrencyConversionApi;
+import com.financemanage.investment.api.InvestmentEvents.PortfolioChanged;
 import com.financemanage.investment.application.InvestmentService.Portfolio;
 import com.financemanage.investment.domain.AssetRepository;
 import com.financemanage.investment.domain.PriceProvider;
@@ -13,6 +14,7 @@ import com.financemanage.investment.domain.model.CashStatus;
 import com.financemanage.investment.domain.model.Trade;
 import com.financemanage.ledger.api.CategoryView;
 import com.financemanage.ledger.api.LedgerCommands.RecordExternalTransaction;
+import com.financemanage.ledger.api.LedgerEvents.TransactionSnapshot;
 import com.financemanage.ledger.api.LedgerQueryApi;
 import com.financemanage.ledger.api.WalletBalance;
 import com.financemanage.shared.domain.DomainException;
@@ -54,8 +56,10 @@ class InvestmentServiceTest {
         service.sell(fpt.getId(), OWNER, BigDecimal.TEN, new BigDecimal("110000"), null, null, null);
         service.income(fpt.getId(), OWNER, new BigDecimal("200000"), CASH, DIVIDENDS, null);
 
-        assertThat(events).hasSize(2); // the sell has no wallet
-        assertThat(events.getFirst()).isInstanceOfSatisfying(RecordExternalTransaction.class, c -> {
+        List<Object> commands = events.stream().filter(RecordExternalTransaction.class::isInstance).toList();
+        assertThat(commands).hasSize(2); // the sell has no wallet
+        assertThat(events).anyMatch(PortfolioChanged.class::isInstance);
+        assertThat(commands.getFirst()).isInstanceOfSatisfying(RecordExternalTransaction.class, c -> {
             assertThat(c.source()).isEqualTo("INVESTMENT");
             assertThat(c.requestId()).isEqualTo(buy.getId());
             assertThat(c.inflow()).isFalse();
@@ -63,7 +67,7 @@ class InvestmentServiceTest {
             assertThat(c.amount()).isEqualByComparingTo("10015000");
             assertThat(c.occurredOn()).isEqualTo(TODAY);
         });
-        assertThat(events.get(1)).isInstanceOfSatisfying(RecordExternalTransaction.class, c -> {
+        assertThat(commands.get(1)).isInstanceOfSatisfying(RecordExternalTransaction.class, c -> {
             assertThat(c.inflow()).isTrue();
             assertThat(c.categoryId()).isEqualTo(DIVIDENDS);
         });
@@ -126,6 +130,11 @@ class InvestmentServiceTest {
 
         @Override
         public List<CategoryView> categories(UUID ownerId) {
+            return List.of();
+        }
+
+        @Override
+        public List<TransactionSnapshot> transactions(UUID ownerId) {
             return List.of();
         }
 

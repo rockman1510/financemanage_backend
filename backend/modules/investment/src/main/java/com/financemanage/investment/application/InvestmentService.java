@@ -1,6 +1,7 @@
 package com.financemanage.investment.application;
 
 import com.financemanage.currency.api.CurrencyConversionApi;
+import com.financemanage.investment.api.InvestmentEvents.PortfolioChanged;
 import com.financemanage.investment.api.InvestmentQueryApi;
 import com.financemanage.investment.domain.AssetRepository;
 import com.financemanage.investment.domain.PriceProvider;
@@ -59,8 +60,8 @@ public class InvestmentService implements InvestmentQueryApi {
     }
 
     public Asset create(UUID ownerId, String name, String symbol, AssetType type, String currency, String note) {
-        return assets.save(Asset.create(ownerId, name, symbol, type, Money.currency(currency == null ? "VND"
-                : currency), note));
+        return changed(assets.save(Asset.create(ownerId, name, symbol, type, Money.currency(currency == null ? "VND"
+                : currency), note)));
     }
 
     @Transactional(readOnly = true)
@@ -76,12 +77,14 @@ public class InvestmentService implements InvestmentQueryApi {
     public Asset update(UUID id, UUID ownerId, String name, String symbol, String note) {
         Asset asset = load(id, ownerId);
         asset.update(name, symbol, note);
-        return assets.save(asset);
+        return changed(assets.save(asset));
     }
 
     /** Stops tracking the asset; wallet transactions already recorded for its trades stay. */
     public void delete(UUID id, UUID ownerId) {
-        assets.delete(load(id, ownerId));
+        Asset asset = load(id, ownerId);
+        assets.delete(asset);
+        changed(asset);
     }
 
     public Trade buy(UUID id, UUID ownerId, BigDecimal quantity, BigDecimal price, BigDecimal fee, UUID walletId,
@@ -114,7 +117,7 @@ public class InvestmentService implements InvestmentQueryApi {
     public Asset updatePrice(UUID id, UUID ownerId, BigDecimal price, LocalDate date) {
         Asset asset = load(id, ownerId);
         asset.updatePrice(price, day(date));
-        return assets.save(asset);
+        return changed(assets.save(asset));
     }
 
     public void cashRecorded(UUID tradeId, UUID transactionId) {
@@ -139,7 +142,7 @@ public class InvestmentService implements InvestmentQueryApi {
                 .filter(q -> asset.getPriceDate() == null || !q.date().isBefore(asset.getPriceDate()))
                 .map(q -> {
                     asset.updatePrice(q.price(), q.date());
-                    assets.save(asset);
+                    changed(assets.save(asset));
                     return true;
                 }).orElse(false);
     }
@@ -200,7 +203,7 @@ public class InvestmentService implements InvestmentQueryApi {
     }
 
     private Trade recorded(Asset asset, Trade trade, UUID categoryId) {
-        assets.save(asset);
+        changed(assets.save(asset));
         if (trade.getCashStatus() == CashStatus.PENDING) {
             boolean inflow = trade.getType() != TradeType.BUY;
             events.publishEvent(new RecordExternalTransaction(trade.getId(), SOURCE, trade.getId(), asset.getOwnerId(),
@@ -232,6 +235,11 @@ public class InvestmentService implements InvestmentQueryApi {
         if (!wallet.balance().currency().equals(asset.getCurrency())) {
             throw new DomainException("CURRENCY_MISMATCH", "The asset is in " + asset.getCurrency());
         }
+    }
+
+    private Asset changed(Asset asset) {
+        events.publishEvent(new PortfolioChanged(asset.getOwnerId()));
+        return asset;
     }
 
     private Asset load(UUID id, UUID ownerId) {

@@ -14,6 +14,7 @@ import com.financemanage.bill.domain.model.BillPayment;
 import com.financemanage.bill.domain.model.PaymentStatus;
 import com.financemanage.ledger.api.CategoryView;
 import com.financemanage.ledger.api.LedgerCommands.RecordExternalTransaction;
+import com.financemanage.ledger.api.LedgerEvents.TransactionSnapshot;
 import com.financemanage.ledger.api.LedgerQueryApi;
 import com.financemanage.ledger.api.WalletBalance;
 import com.financemanage.shared.domain.DomainException;
@@ -122,6 +123,11 @@ class BillServiceTest {
         public List<CategoryView> categories(UUID ownerId) {
             return List.of(new CategoryView(RENT, "Thuê nhà", "EXPENSE", null),
                     new CategoryView(SALARY, "Lương", "INCOME", null));
+        }
+
+        @Override
+        public List<TransactionSnapshot> transactions(UUID ownerId) {
+            return List.of();
         }
 
         @Override
