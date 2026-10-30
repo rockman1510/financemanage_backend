@@ -139,6 +139,11 @@ class TransactionRepositoryAdapter implements TransactionRepository {
         jpa.flush();
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteByOwnerId(ownerId);
+    }
+
     private Transaction toDomain(TransactionJpaEntity e) {
         return new Transaction(e.id, e.ownerId, e.walletId, e.type, Money.of(e.amount, e.currency), e.categoryId,
                 e.occurredOn, e.note, e.withPerson, e.excludeFromReport, e.transferId, e.counterpartWalletId,

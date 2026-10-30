@@ -25,4 +25,6 @@ public interface RecurringTransactionRepository {
     void deleteByWallet(UUID walletId);
 
     void delete(RecurringTransaction rule);
+
+    void deleteByOwner(UUID ownerId);
 }

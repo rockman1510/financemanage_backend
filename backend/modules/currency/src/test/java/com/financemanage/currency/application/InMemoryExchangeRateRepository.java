@@ -54,6 +54,11 @@ class InMemoryExchangeRateRepository implements ExchangeRateRepository {
         store.remove(rate.getId());
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        store.values().removeIf(r -> ownerId.equals(r.getOwnerId()));
+    }
+
     private Stream<ExchangeRate> pair(UUID ownerId, String base, String quote) {
         return store.values().stream()
                 .filter(r -> Objects.equals(r.getOwnerId(), ownerId))

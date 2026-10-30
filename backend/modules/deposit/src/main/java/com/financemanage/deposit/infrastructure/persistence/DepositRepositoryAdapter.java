@@ -74,6 +74,11 @@ class DepositRepositoryAdapter implements DepositRepository {
         jpa.deleteById(deposit.getId());
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteByOwnerId(ownerId);
+    }
+
     private void copy(Deposit d, DepositJpaEntity e) {
         e.ownerId = d.getOwnerId();
         e.institutionName = d.getInstitutionName();

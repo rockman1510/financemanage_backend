@@ -2,6 +2,7 @@ package com.financemanage.shared.web;
 
 import com.financemanage.shared.domain.DomainException;
 import com.financemanage.shared.domain.NotFoundException;
+import com.financemanage.shared.domain.TooManyAttemptsException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,6 +19,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NotFoundException.class)
     ResponseEntity<ApiError> notFound(NotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiError.of(ex.getCode(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(TooManyAttemptsException.class)
+    ResponseEntity<ApiError> tooManyAttempts(TooManyAttemptsException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ApiError.of(ex.getCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(DomainException.class)

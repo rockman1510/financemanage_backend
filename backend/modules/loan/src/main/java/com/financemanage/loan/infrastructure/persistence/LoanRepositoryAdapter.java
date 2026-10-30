@@ -71,6 +71,11 @@ class LoanRepositoryAdapter implements LoanRepository {
         jpa.deleteById(loan.getId());
     }
 
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        jpa.deleteByOwnerId(ownerId);
+    }
+
     private void copy(Loan loan, LoanJpaEntity e) {
         e.ownerId = loan.getOwnerId();
         e.counterpartyName = loan.getCounterpartyName();

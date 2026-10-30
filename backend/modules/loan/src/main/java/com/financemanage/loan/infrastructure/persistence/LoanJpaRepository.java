@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -28,4 +29,9 @@ interface LoanJpaRepository extends JpaRepository<LoanJpaEntity, UUID> {
             where l.status = com.financemanage.loan.domain.model.LoanStatus.ACTIVE
               and i.dueDate = :date and i.settled = false""")
     List<LoanJpaEntity> findActiveWithUnpaidInstallmentDueOn(@Param("date") LocalDate date);
+
+    /** Installments, repayments and rate periods go with their loan (ON DELETE CASCADE). */
+    @Modifying
+    @Query("delete from LoanJpaEntity l where l.ownerId = :ownerId")
+    void deleteByOwnerId(@Param("ownerId") UUID ownerId);
 }

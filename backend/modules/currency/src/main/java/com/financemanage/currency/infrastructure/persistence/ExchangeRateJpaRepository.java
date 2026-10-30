@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 interface ExchangeRateJpaRepository extends JpaRepository<ExchangeRateJpaEntity, UUID> {
@@ -27,6 +28,10 @@ interface ExchangeRateJpaRepository extends JpaRepository<ExchangeRateJpaEntity,
             select r from ExchangeRateJpaEntity r where r.ownerId is null and r.baseCurrency = :base
             and r.quoteCurrency = :quote and r.effectiveDate <= :date order by r.effectiveDate desc""")
     List<ExchangeRateJpaEntity> findLatestGlobal(String base, String quote, LocalDate date, Limit limit);
+
+    @Modifying
+    @Query("delete from ExchangeRateJpaEntity r where r.ownerId = :ownerId")
+    void deleteByOwnerId(UUID ownerId);
 
     @Query("""
             select r from ExchangeRateJpaEntity r where r.ownerId = :ownerId or r.ownerId is null

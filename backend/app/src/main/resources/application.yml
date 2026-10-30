@@ -45,6 +45,26 @@ app:
       refresh-token-ttl: P30D
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
+    # encrypts two-factor secrets in the database; changing it disables existing two-factor setups
+    encryption-key: ${ENCRYPTION_KEY:change-me-in-production-encryption-key-32+chars}
+  identity:
+    login:
+      max-attempts: 5
+      lock-duration: PT15M
+    verification:
+      code-ttl: PT15M
+      max-attempts: 5
+      resend-cooldown: PT1M
+    two-factor:
+      issuer: FinanceManage
+      challenge-ttl: PT5M
+      max-attempts: 5
+    google:
+      # comma-separated OAuth client ids (web, Android, iOS); empty = Google sign-in disabled
+      client-ids: ${GOOGLE_CLIENT_IDS:}
+    mail:
+      from: ${MAIL_FROM:no-reply@financemanage.local}
+    cleanup-cron: "0 45 3 * * *"
   deposit:
     reminder-days-before: 7
     maturity-cron: "0 5 0 * * *"

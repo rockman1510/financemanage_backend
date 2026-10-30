@@ -47,4 +47,9 @@ class InMemoryLoanRepository implements LoanRepository {
     public void delete(Loan loan) {
         store.remove(loan.getId());
     }
+
+    @Override
+    public void deleteByOwner(UUID ownerId) {
+        store.values().removeIf(l -> l.getOwnerId().equals(ownerId));
+    }
 }

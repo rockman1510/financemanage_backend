@@ -21,4 +21,7 @@ public interface LoanRepository {
     List<Loan> findActiveWithUnpaidInstallmentDueOn(LocalDate date);
 
     void delete(Loan loan);
+
+    /** Removes every loan of the owner (account deletion). */
+    void deleteByOwner(UUID ownerId);
 }

@@ -97,6 +97,13 @@ public class AttachmentService {
         }
     }
 
+    /** Removes every attachment of an owner (account deletion); the files go once the deletion commits. */
+    public void deleteAllOfOwner(UUID ownerId) {
+        List<Attachment> all = attachments.findByOwner(ownerId);
+        attachments.deleteByOwner(ownerId);
+        all.forEach(a -> afterCompletion(a.storageKey(), true));
+    }
+
     /** Deletes the file after commit ({@code onCommit}) or after rollback (a stored file the database lost). */
     private void afterCompletion(String key, boolean onCommit) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
