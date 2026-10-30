@@ -22,5 +22,7 @@ include(
     "modules:loan",
     "modules:notification",
     "modules:reporting",
+    "modules:ledger",
+    "modules:currency",
     "app",
 )

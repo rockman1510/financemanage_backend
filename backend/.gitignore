@@ -5,3 +5,5 @@ build/
 .idea/
 out/
 *.log
+# receipt photos stored by a locally running backend
+data/

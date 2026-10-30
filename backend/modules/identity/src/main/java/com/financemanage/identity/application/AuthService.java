@@ -1,5 +1,6 @@
 package com.financemanage.identity.application;
 
+import com.financemanage.identity.api.IdentityEvents.UserRegistered;
 import com.financemanage.identity.domain.RefreshToken;
 import com.financemanage.identity.domain.RefreshTokenRepository;
 import com.financemanage.identity.domain.UserAccount;
@@ -17,6 +18,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -32,16 +34,18 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokens;
     private final PasswordEncoder passwordEncoder;
     private final TokenIssuer tokenIssuer;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
     private final Duration refreshTokenTtl;
 
     public AuthService(UserAccountRepository users, RefreshTokenRepository refreshTokens,
-                       PasswordEncoder passwordEncoder, TokenIssuer tokenIssuer, Clock clock,
-                       @Value("${app.security.jwt.refresh-token-ttl:P30D}") Duration refreshTokenTtl) {
+                       PasswordEncoder passwordEncoder, TokenIssuer tokenIssuer, ApplicationEventPublisher events,
+                       Clock clock, @Value("${app.security.jwt.refresh-token-ttl:P30D}") Duration refreshTokenTtl) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.tokenIssuer = tokenIssuer;
+        this.events = events;
         this.clock = clock;
         this.refreshTokenTtl = refreshTokenTtl;
     }
@@ -51,6 +55,7 @@ public class AuthService {
             throw new DomainException("EMAIL_TAKEN", "Email is already registered");
         }
         UserAccount user = users.save(new UserAccount(email, passwordEncoder.encode(password), fullName));
+        events.publishEvent(new UserRegistered(user.getId(), user.getEmail(), user.getFullName()));
         return issueTokens(user);
     }
 

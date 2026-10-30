@@ -24,6 +24,9 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | `app.security.jwt.access-token-ttl` / `refresh-token-ttl` | `PT15M` / `P30D` | Thời hạn token |
 | `app.deposit.maturity-cron`, `app.deposit.reminder-days-before` | `0 5 0 * * *`, `7` | Job đáo hạn/tái tục và nhắc trước N ngày |
 | `app.loan.reminder-cron`, `app.loan.reminder-days-before` | `0 15 0 * * *`, `3` | Job nhắc kỳ trả nợ và cảnh báo quá hạn |
+| `app.ledger.recurring-cron` | `0 30 0 * * *` | Job ghi giao dịch định kỳ đến hạn |
+| `ATTACHMENTS_DIR` (`app.ledger.attachments.directory`), `app.ledger.attachments.max-size` | `./data/attachments`, `5MB` | Nơi lưu và kích thước tối đa của ảnh hoá đơn |
+| `app.currency.refresh-cron` | `0 0 6 * * *` | Job lấy tỷ giá từ các `ExchangeRateProvider` (không làm gì khi chưa có provider) |
 | `app.reporting.upcoming-days`, `projection-months` | `30`, `12` | Dashboard |
 | `spring.cache.type` | `simple` | Đổi sang `redis` (thêm `spring-boot-starter-data-redis`) khi chạy nhiều instance |
 
@@ -32,6 +35,12 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | Nhóm | Endpoint |
 |---|---|
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET /me` |
+| Ví | `GET/POST /wallets`, `GET /wallets/total?currency=VND`, `GET/PATCH/DELETE /wallets/{id}`, `POST /wallets/{id}/adjust-balance` |
+| Danh mục | `GET/POST /categories`, `PATCH/DELETE /categories/{id}` |
+| Giao dịch | `GET/POST /transactions` (lọc + phân trang; header `Idempotency-Key`), `GET /transactions/summary`, `GET/PATCH/DELETE /transactions/{id}`, `POST /transactions/{id}/attachments`, `GET/DELETE /attachments/{id}` |
+| Chuyển tiền | `POST /transfers` (header `Idempotency-Key`), `DELETE /transfers/{transferId}` |
+| Giao dịch định kỳ | `GET/POST /recurring-transactions`, `GET/PATCH/DELETE /recurring-transactions/{id}` |
+| Tỷ giá | `GET/POST /exchange-rates`, `DELETE /exchange-rates/{id}`, `GET /exchange-rates/convert` |
 | Tiền gửi | `GET/POST /deposits`, `POST /deposits/preview`, `GET/PATCH/DELETE /deposits/{id}`, `GET /deposits/{id}/settlement-quote`, `POST /deposits/{id}/settle` |
 | Vay nợ | `GET/POST /loans`, `POST /loans/preview-schedule`, `GET/PATCH/DELETE /loans/{id}`, `POST /loans/{id}/repayments` (header `Idempotency-Key`), `POST /loans/{id}/prepayments`, `POST /loans/{id}/rate-changes` |
 | Báo cáo | `GET /dashboard` |
@@ -42,6 +51,8 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 - **Cách tính lãi mới**: implement `InterestCalculator`, thêm giá trị vào `InterestCalculationMethod`, khai báo bean.
 - **Phương thức trả nợ mới**: kế thừa `MonthlyScheduleGenerator` (hoặc implement `RepaymentScheduleGenerator`).
 - **Kênh thông báo mới** (FCM, email, Zalo…): implement `NotificationSender`.
+- **Nguồn tỷ giá tự động** (bảng tỷ giá ngân hàng…): implement `ExchangeRateProvider`, khai báo bean.
+- **Lưu ảnh hoá đơn lên object storage** (S3, R2…): implement `AttachmentStorage` thay cho bản lưu đĩa local.
 - **Chuyển sang Keycloak**: thay bean `JwtDecoder` trong `SecurityConfig` bằng `NimbusJwtDecoder.withIssuerLocation(...)`.
 - **Tách microservice**: mỗi module đã có schema, migration, API và event riêng → tạo Spring Boot app mới chỉ phụ
   thuộc module đó + `shared-kernel`, chuyển transport của event sang Kafka (`spring-modulith-events-kafka`).

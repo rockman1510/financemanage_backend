@@ -277,7 +277,132 @@ check "Tài sản ròng = 50tr + lãi + 5tr − 20tr" "$(j '.totals[0].netWorth'
 check "Sắp tới có 1 khoản chi và 2 khoản thu" "$(j '[.upcoming[] | .direction] | sort | join(",")')" "IN,IN,OUT"
 
 # =====================================================================================
-section "10. Job đáo hạn/tái tục & thông báo"
+section "10. Ví & giao dịch thu chi (người dùng mới)"
+register "ledger$RUN_ID@example.com"
+req GET /categories
+check_status "Danh mục mặc định" 200
+check "Có danh mục mặc định Ăn uống và Lương" "$(j '[.[] | select(.code=="FOOD" or .code=="SALARY") | .code] | sort | join(",")')" "FOOD,SALARY"
+FOOD=$(j '.[] | select(.code=="FOOD") | .id'); SALARY=$(j '.[] | select(.code=="SALARY") | .id')
+COFFEE=$(j '.[] | select(.code=="FOOD_COFFEE") | .id')
+check "Cà phê là danh mục con của Ăn uống" "$(j '.[] | select(.code=="FOOD_COFFEE") | .parentId')" "$FOOD"
+
+req POST /wallets '{"name":"Tiền mặt","type":"CASH","currency":"VND","initialBalance":1000000}'
+check_status "Tạo ví tiền mặt" 201
+CASH=$(j .id)
+req POST /wallets '{"name":"Vietcombank","type":"BANK_ACCOUNT","currency":"VND","initialBalance":5000000}'
+BANK=$(j .id)
+
+LUNCH="{\"walletId\":\"$CASH\",\"categoryId\":\"$FOOD\",\"amount\":50000,\"occurredOn\":\"2025-04-01\",\"note\":\"Phở bò\"}"
+req POST /transactions "$LUNCH" "Idempotency-Key: lunch-$RUN_ID"
+check_status "Ghi khoản chi" 201
+check "Loại giao dịch do danh mục quyết định" "$(j .type)" "EXPENSE"
+LUNCH_ID=$(j .id)
+req POST /transactions "$LUNCH" "Idempotency-Key: lunch-$RUN_ID"
+check "Gửi lại cùng Idempotency-Key trả về giao dịch cũ" "$(j .id)" "$LUNCH_ID"
+req GET "/wallets/$CASH"
+check "Số dư ví = 1.000.000 − 50.000 (chỉ trừ 1 lần)" "$(j .balance)" "950000"
+
+req POST /transactions "{\"walletId\":\"$CASH\",\"categoryId\":\"$COFFEE\",\"amount\":30000,\"occurredOn\":\"2025-04-02\"}"
+req POST /transactions "{\"walletId\":\"$BANK\",\"categoryId\":\"$SALARY\",\"amount\":20000000,\"occurredOn\":\"2025-04-05\"}"
+req GET "/transactions?categoryId=$FOOD"
+check "Lọc theo danh mục cha gồm cả danh mục con" "$(j .totalElements)" "2"
+req GET "/transactions?q=ph%E1%BB%9F"
+check "Tìm theo ghi chú" "$(j '.items | length')" "1"
+req GET "/transactions?from=2025-04-02&to=2025-04-30&size=1"
+check "Lọc theo ngày + phân trang" "$(j '"\(.totalElements)|\(.totalPages)|\(.items | length)"')" "2|2|1"
+req GET "/transactions/summary?from=2025-04-01&to=2025-04-30"
+check "Tổng thu / chi / chênh lệch" "$(j '.[0] | "\(.income)|\(.expense)|\(.net)"')" "20000000|80000|19920000"
+
+req PATCH "/transactions/$LUNCH_ID" "{\"walletId\":\"$BANK\",\"amount\":80000}"
+check_status "Chuyển giao dịch sang ví khác + sửa số tiền" 200
+req GET "/wallets/$CASH"; CASH_BAL=$(j .balance)
+req GET "/wallets/$BANK"
+check "Số dư 2 ví sau khi chuyển" "$CASH_BAL|$(j .balance)" "970000|24920000"
+req DELETE "/transactions/$LUNCH_ID"
+check_status "Xoá giao dịch" 204
+req GET "/wallets/$BANK"
+check "Xoá giao dịch hoàn lại số dư" "$(j .balance)" "25000000"
+
+req POST "/wallets/$CASH/adjust-balance" '{"newBalance":1000000,"note":"Đếm lại tiền"}'
+check "Điều chỉnh số dư tạo giao dịch ADJUSTMENT_IN 30.000" "$(j '"\(.wallet.balance)|\(.transaction.type)|\(.transaction.amount)"')" "1000000|ADJUSTMENT_IN|30000"
+req DELETE "/wallets/$BANK"
+check "Không xoá được ví đã có giao dịch" "$STATUS|$(j .code)" "422|WALLET_HAS_TRANSACTIONS"
+req PATCH "/wallets/$BANK" '{"archived":true}'
+req GET /wallets
+check "Ví lưu trữ không hiện trong danh sách mặc định" "$(j length)" "1"
+req POST /transactions "{\"walletId\":\"$BANK\",\"categoryId\":\"$FOOD\",\"amount\":1000}"
+check "Không ghi được vào ví đã lưu trữ" "$STATUS|$(j .code)" "422|WALLET_ARCHIVED"
+req POST /transactions "{\"walletId\":\"$CASH\",\"categoryId\":\"$FOOD\",\"amount\":10.5}"
+check "VND không có số lẻ" "$STATUS|$(j .code)" "422|INVALID_AMOUNT"
+req POST /transactions '{"amount":-1}'
+check "Dữ liệu sai định dạng" "$STATUS|$(j .code)" "400|VALIDATION_FAILED"
+SAVED=$TOKEN; register "ledger-other$RUN_ID@example.com"
+req GET "/wallets/$CASH"
+check_status "Người khác xem ví" 404
+TOKEN=$SAVED
+
+# =====================================================================================
+section "11. Chuyển tiền & đa tiền tệ"
+req POST /wallets '{"name":"Đô la","type":"CASH","currency":"USD","initialBalance":0}'
+USD=$(j .id)
+TRANSFER="{\"fromWalletId\":\"$CASH\",\"toWalletId\":\"$USD\",\"amount\":500000,\"occurredOn\":\"2025-04-10\"}"
+req POST /transfers "$TRANSFER"
+check "Chuyển khác tiền tệ khi chưa có tỷ giá" "$STATUS|$(j .code)" "422|EXCHANGE_RATE_MISSING"
+req POST /exchange-rates '{"base":"USD","quote":"VND","rate":25000,"effectiveDate":"2025-04-01"}'
+check_status "Nhập tỷ giá USD/VND" 200
+RATE_ID=$(j .id)
+req GET "/exchange-rates/convert?amount=10&from=USD&to=VND&date=2025-04-10"
+check "Quy đổi 10 USD" "$(j .converted)" "250000"
+req POST /transfers "$TRANSFER" "Idempotency-Key: fx-$RUN_ID"
+check_status "Chuyển 500.000 VND sang ví USD" 201
+check "Ví USD nhận 500.000 / 25.000 = 20 USD" "$(j '"\(.in.amount + 0)|\(.in.currency)|\(.out.type)"')" "20|USD|TRANSFER_OUT"
+TRANSFER_ID=$(j .transferId)
+req POST /transfers "$TRANSFER" "Idempotency-Key: fx-$RUN_ID"
+check "Gửi lại cùng Idempotency-Key không chuyển 2 lần" "$(j .transferId)" "$TRANSFER_ID"
+req GET "/wallets/total?currency=VND&date=2025-04-10"
+check "Tổng tài sản các ví quy về VND = 500.000 + 20 × 25.000" "$(j '"\(.total)|\(.missingRates | length)"')" "1000000|0"
+req GET "/transactions/summary?from=2025-04-10&to=2025-04-10"
+check "Chuyển tiền không tính là thu/chi" "$(j length)" "0"
+req DELETE "/transfers/$TRANSFER_ID"
+check_status "Huỷ chuyển tiền" 204
+req GET "/wallets/$USD"
+check "Huỷ chuyển tiền hoàn lại số dư (USD có 2 số lẻ: 0.00)" "$(j '.balance + 0')" "0"
+req DELETE "/exchange-rates/$RATE_ID"
+check_status "Xoá tỷ giá" 204
+
+# =====================================================================================
+section "12. Giao dịch định kỳ & ảnh hoá đơn"
+RENT=$(curl -s "$API/categories?type=EXPENSE" -H "Authorization: Bearer $TOKEN" | jq -r '.[] | select(.code=="BILLS_RENT") | .id')
+req POST /wallets '{"name":"Techcombank","type":"BANK_ACCOUNT","currency":"VND","initialBalance":50000000}'
+TCB=$(j .id)
+req POST /recurring-transactions "{\"walletId\":\"$TCB\",\"categoryId\":\"$RENT\",\"amount\":5000000,\"note\":\"Tiền nhà\",\"frequency\":\"MONTHLY\",\"startDate\":\"2025-01-31\",\"endDate\":\"2025-03-31\"}"
+check_status "Tạo giao dịch định kỳ hằng tháng" 201
+RULE_ID=$(j .id)
+check "Ghi ngay các kỳ đã qua, rồi kết thúc" "$(j '"\(.generatedCount)|\(.active)|\(.nextOccurrence)"')" "3|false|null"
+req GET "/transactions?walletId=$TCB"
+check "Ngày ghi theo lịch (tháng 2 lấy ngày cuối tháng)" "$(j '[.items[].occurredOn] | sort | join(",")')" "2025-01-31,2025-02-28,2025-03-31"
+TX_ID=$(j '.items[0].id')
+req GET "/wallets/$TCB"
+check "Số dư = 50tr − 3 × 5tr" "$(j .balance)" "35000000"
+req DELETE "/recurring-transactions/$RULE_ID"
+check_status "Xoá quy tắc định kỳ (giữ giao dịch đã ghi)" 204
+
+printf '\x89PNG' > /tmp/api-flow-test-$RUN_ID.png
+UP=$(curl -s -w '\n%{http_code}' -X POST "$API/transactions/$TX_ID/attachments" -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/tmp/api-flow-test-$RUN_ID.png;type=image/png;filename=hoa-don.png")
+STATUS=${UP##*$'\n'}; BODY=${UP%$'\n'*}
+check_status "Đính kèm ảnh hoá đơn" 201
+ATT_ID=$(j .id)
+check "Tên và kích thước file" "$(j '"\(.fileName)|\(.size)"')" "hoa-don.png|4"
+check "Tải lại đúng nội dung" "$(curl -s "$API/attachments/$ATT_ID" -H "Authorization: Bearer $TOKEN" | od -An -tx1 | tr -d ' \n')" "89504e47"
+req GET "/transactions/$TX_ID"
+check "Chi tiết giao dịch có ảnh đính kèm" "$(j '.attachments | length')" "1"
+req DELETE "/attachments/$ATT_ID"
+check_status "Xoá ảnh đính kèm" 204
+rm -f /tmp/api-flow-test-$RUN_ID.png
+
+# =====================================================================================
+section "13. Job đáo hạn/tái tục & thông báo"
 if [[ "$RUN_JOB_TESTS" != "1" ]]; then
   echo "  (bỏ qua – chạy app với cron nhanh và đặt RUN_JOB_TESTS=1, xem docs/API_TEST_GUIDE.md)"
 else

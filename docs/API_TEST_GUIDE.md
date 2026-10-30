@@ -5,7 +5,7 @@ thức, bạn tự tính lại được bằng máy tính hoặc Excel.
 
 Có 3 cách, từ nhanh đến chi tiết:
 
-1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 100 kiểm tra, mỗi dòng in ✔ hoặc ✘.
+1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 144 kiểm tra, mỗi dòng in ✔ hoặc ✘.
 2. **Gọi tay từng bước bằng curl** (mục 3 trở đi): copy từng lệnh, so kết quả với giá trị kỳ vọng.
 3. **Swagger UI**: `http://localhost:8080/swagger-ui.html`. Bấm *Authorize* và dán access token rồi thử từng endpoint.
 
@@ -25,7 +25,7 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
-  bạn thấy kết quả ngay. Chỉ cần khi test mục 8 (job).
+  bạn thấy kết quả ngay. Chỉ cần khi test mục 10 (job).
 - Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
   giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
@@ -37,8 +37,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 100 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 10 (job) được bỏ
-qua. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 144 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 13 (job) được bỏ
+qua (còn 135 kiểm tra). Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -219,7 +219,105 @@ curl -s $API/dashboard -H "$AUTH" | jq
 
 ---
 
-## 7. Job đáo hạn, tái tục và thông báo
+## 7. Ví & giao dịch thu chi
+
+Dùng **một user mới**. Mỗi user mới có sẵn bộ danh mục mặc định (giống Money Lover); danh mục mặc định có `code`
+cố định để app dịch tên.
+
+```bash
+curl -s "$API/categories" -H "$AUTH" | jq -r '.[] | "\(.code)\t\(.type)\t\(.name)\t\(.parentId // "")"'
+FOOD=$(curl -s "$API/categories" -H "$AUTH" | jq -r '.[] | select(.code=="FOOD") | .id')
+COFFEE=$(curl -s "$API/categories" -H "$AUTH" | jq -r '.[] | select(.code=="FOOD_COFFEE") | .id')
+SALARY=$(curl -s "$API/categories" -H "$AUTH" | jq -r '.[] | select(.code=="SALARY") | .id')
+
+CASH=$(curl -s -X POST $API/wallets -H "$AUTH" -H "$JSON" \
+  -d '{"name":"Tiền mặt","type":"CASH","currency":"VND","initialBalance":1000000}' | jq -r .id)
+BANK=$(curl -s -X POST $API/wallets -H "$AUTH" -H "$JSON" \
+  -d '{"name":"Vietcombank","type":"BANK_ACCOUNT","currency":"VND","initialBalance":5000000}' | jq -r .id)
+LUNCH="{\"walletId\":\"$CASH\",\"categoryId\":\"$FOOD\",\"amount\":50000,\"occurredOn\":\"2025-04-01\",\"note\":\"Phở bò\"}"
+```
+
+Quy tắc:
+
+- **Số dư ví = số dư ban đầu + tổng các giao dịch** (thu, chuyển vào, điều chỉnh tăng là cộng; chi, chuyển ra,
+  điều chỉnh giảm là trừ). Số dư được cập nhật trong cùng database transaction với giao dịch.
+- Danh mục quyết định giao dịch là **thu** hay **chi**; số tiền luôn dương, theo tiền tệ của ví.
+- Số tiền không được có nhiều số lẻ hơn tiền tệ cho phép: VND không có số lẻ, USD tối đa 2 số lẻ.
+- Danh mục có tối đa 2 cấp. Lọc theo danh mục cha thì gồm cả danh mục con.
+- Ví đã có giao dịch không xoá được, chỉ **lưu trữ** (`archived=true`); ví lưu trữ không nhận giao dịch mới.
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| W1 | Ghi khoản chi | `curl -s -X POST $API/transactions -H "$AUTH" -H "$JSON" -H 'Idempotency-Key: lunch-1' -d "$LUNCH" \| jq` | `201`, `type=EXPENSE` |
+| W2 | Gửi lại W1 (cùng key) | như W1 | Cùng `id`. `GET $API/wallets/$CASH` có `balance=950000`, tức chỉ trừ 1 lần |
+| W3 | Thêm chi cà phê và thu lương | `curl -s -X POST $API/transactions -H "$AUTH" -H "$JSON" -d "{\"walletId\":\"$CASH\",\"categoryId\":\"$COFFEE\",\"amount\":30000,\"occurredOn\":\"2025-04-02\"}"`, rồi tương tự với `"walletId":"$BANK","categoryId":"$SALARY","amount":20000000,"occurredOn":"2025-04-05"` | `201` |
+| W4 | Lọc theo danh mục cha | `curl -s "$API/transactions?categoryId=$FOOD" -H "$AUTH" \| jq .totalElements` | `2` (Ăn uống + Cà phê) |
+| W5 | Lọc ngày + phân trang | `curl -s "$API/transactions?from=2025-04-02&to=2025-04-30&size=1" -H "$AUTH" \| jq '{totalElements,totalPages,n:(.items\|length)}'` | `2`, `2`, `1` |
+| W6 | Tổng thu chi | `curl -s "$API/transactions/summary?from=2025-04-01&to=2025-04-30" -H "$AUTH" \| jq` | `income=20000000`, `expense=80000`, `net=19920000` |
+| W7 | Chuyển giao dịch sang ví khác, sửa số tiền | `curl -s -X PATCH $API/transactions/<id W1> -H "$AUTH" -H "$JSON" -d "{\"walletId\":\"$BANK\",\"amount\":80000}"` | `200`. Ví tiền mặt `970000` (1tr − 30k), ví ngân hàng `24920000` (5tr + 20tr − 80k) |
+| W8 | Xoá giao dịch | `curl -si -X DELETE $API/transactions/<id W1> -H "$AUTH"` | `204`. Ví ngân hàng về `25000000` |
+| W9 | Điều chỉnh số dư | `curl -s -X POST $API/wallets/$CASH/adjust-balance -H "$AUTH" -H "$JSON" -d '{"newBalance":1000000}' \| jq` | `201`, `wallet.balance=1000000`, `transaction.type=ADJUSTMENT_IN`, `amount=30000`. Điều chỉnh không tính là thu/chi |
+| W10 | Xoá ví có giao dịch | `curl -s -X DELETE $API/wallets/$BANK -H "$AUTH" \| jq .code` | `422`, `WALLET_HAS_TRANSACTIONS` |
+| W11 | Lưu trữ ví rồi ghi vào ví đó | `PATCH $API/wallets/$BANK` với `{"archived":true}`, rồi `POST $API/transactions` vào `$BANK` | `GET $API/wallets` chỉ còn 1 ví (`?includeArchived=true` thì 2). Ghi giao dịch: `422`, `WALLET_ARCHIVED` |
+| W12 | Số lẻ không hợp lệ | `POST $API/transactions` với `"amount":10.5` vào ví VND | `422`, `INVALID_AMOUNT` |
+| W13 | Người khác xem ví | `GET $API/wallets/$CASH` bằng token của user khác | `404` |
+
+## 8. Chuyển tiền & đa tiền tệ
+
+Quy tắc:
+
+- Chuyển tiền tạo **2 giao dịch** (`TRANSFER_OUT` ở ví nguồn, `TRANSFER_IN` ở ví đích) có chung `transferId`.
+  Chuyển tiền không bao giờ tính là thu hay chi. Xoá một vế là xoá cả lần chuyển.
+- Hai ví cùng tiền tệ phải nhận đúng số tiền gửi. Khác tiền tệ thì gửi kèm `receivedAmount`, hoặc bỏ trống để dùng
+  **tỷ giá**: lấy tỷ giá của chính user trước, rồi tới tỷ giá chung; lấy tỷ giá mới nhất có hiệu lực tới ngày giao
+  dịch; không có chiều thuận thì dùng nghịch đảo của chiều ngược lại.
+- Tỷ giá `base=USD, quote=VND, rate=25000` nghĩa là 1 USD = 25.000 VND.
+
+```bash
+USD=$(curl -s -X POST $API/wallets -H "$AUTH" -H "$JSON" -d '{"name":"Đô la","type":"CASH","currency":"USD"}' | jq -r .id)
+TRANSFER="{\"fromWalletId\":\"$CASH\",\"toWalletId\":\"$USD\",\"amount\":500000,\"occurredOn\":\"2025-04-10\"}"
+```
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| T1 | Chuyển khi chưa có tỷ giá | `curl -s -X POST $API/transfers -H "$AUTH" -H "$JSON" -d "$TRANSFER" \| jq .code` | `422`, `EXCHANGE_RATE_MISSING` |
+| T2 | Nhập tỷ giá | `curl -s -X POST $API/exchange-rates -H "$AUTH" -H "$JSON" -d '{"base":"USD","quote":"VND","rate":25000,"effectiveDate":"2025-04-01"}' \| jq` | `200`. Gửi lại cùng cặp + ngày thì cập nhật, không tạo bản ghi mới |
+| T3 | Quy đổi thử | `curl -s "$API/exchange-rates/convert?amount=10&from=USD&to=VND&date=2025-04-10" -H "$AUTH" \| jq .converted` | `250000` |
+| T4 | Chuyển tiền | `curl -s -X POST $API/transfers -H "$AUTH" -H "$JSON" -H 'Idempotency-Key: fx-1' -d "$TRANSFER" \| jq` | `201`. `in.amount=20.00`, `in.currency=USD` (500.000 × 1/25.000). Gửi lại cùng key trả về cùng `transferId` |
+| T5 | Tổng các ví quy về VND | `curl -s "$API/wallets/total?currency=VND&date=2025-04-10" -H "$AUTH" \| jq '{total,missingRates}'` | `total=1000000` (500.000 + 20 × 25.000), `missingRates=[]`. Ví lưu trữ và ví `excludedFromTotal` không được cộng |
+| T6 | Thu chi ngày chuyển | `curl -s "$API/transactions/summary?from=2025-04-10&to=2025-04-10" -H "$AUTH" \| jq length` | `0` |
+| T7 | Huỷ chuyển tiền | `curl -si -X DELETE $API/transfers/<transferId> -H "$AUTH"` | `204`. Ví USD về `0.00`, ví tiền mặt được hoàn lại |
+
+## 9. Giao dịch định kỳ & ảnh hoá đơn
+
+Quy tắc:
+
+- Lần thứ n luôn tính từ ngày bắt đầu: quy tắc hằng tháng bắt đầu ngày 31 sẽ rơi vào ngày cuối của tháng ngắn hơn
+  rồi quay lại ngày 31.
+- Khi tạo quy tắc, các lần đã tới hạn (tới hôm nay) được ghi ngay; các lần sau do job hằng ngày ghi (00:30,
+  `app.ledger.recurring-cron`). Mỗi lần có Idempotency-Key riêng nên job chạy lại không ghi trùng.
+- Tạm dừng (`active=false`) rồi chạy lại thì **không** ghi bù các lần đã lỡ. Ví bị lưu trữ thì quy tắc tự tạm dừng.
+- Ảnh đính kèm: JPEG, PNG, WebP, HEIC hoặc PDF, tối đa 5 MB, tối đa 5 file cho mỗi giao dịch.
+
+```bash
+RENT=$(curl -s "$API/categories?type=EXPENSE" -H "$AUTH" | jq -r '.[] | select(.code=="BILLS_RENT") | .id')
+TCB=$(curl -s -X POST $API/wallets -H "$AUTH" -H "$JSON" -d '{"name":"Techcombank","type":"BANK_ACCOUNT","initialBalance":50000000}' | jq -r .id)
+curl -s -X POST $API/recurring-transactions -H "$AUTH" -H "$JSON" \
+  -d "{\"walletId\":\"$TCB\",\"categoryId\":\"$RENT\",\"amount\":5000000,\"frequency\":\"MONTHLY\",\"startDate\":\"2025-01-31\",\"endDate\":\"2025-03-31\"}" | jq
+```
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| R1 | Tạo quy tắc hằng tháng | (lệnh trên) | `201`, `generatedCount=3`, `active=false`, `nextOccurrence=null` (đã qua ngày kết thúc) |
+| R2 | Giao dịch đã ghi | `curl -s "$API/transactions?walletId=$TCB" -H "$AUTH" \| jq '[.items[].occurredOn]'` | `2025-03-31`, `2025-02-28`, `2025-01-31`. Ví còn `35000000` |
+| R3 | Đính kèm ảnh | `curl -s -X POST $API/transactions/<id>/attachments -H "$AUTH" -F 'file=@hoa-don.png;type=image/png' \| jq` | `201`, có `id`, `fileName`, `size` |
+| R4 | Xem / tải ảnh | `GET $API/transactions/<id>` có `attachments` 1 phần tử; `curl -s $API/attachments/<attachmentId> -H "$AUTH" -o out.png` | Ra đúng file đã gửi |
+| R5 | File không cho phép | gửi file `.exe` (`type=application/octet-stream`) | `422`, `ATTACHMENT_TYPE_NOT_ALLOWED` |
+| R6 | Xoá ảnh | `curl -si -X DELETE $API/attachments/<attachmentId> -H "$AUTH"` | `204` |
+
+---
+
+## 10. Job đáo hạn, tái tục và thông báo
 
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
@@ -261,7 +359,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 
 ---
 
-## 8. Bảng đối chiếu quy tắc nghiệp vụ
+## 11. Bảng đối chiếu quy tắc nghiệp vụ
 
 | Quy tắc | Kiểm tra ở |
 |---|---|
@@ -270,7 +368,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi tích luỹ dừng ở ngày đáo hạn | D1 |
 | Rút trước hạn tính lãi theo lãi suất không kỳ hạn, báo rõ số lãi bị mất | D4 |
 | Không tất toán 2 lần; không tất toán trước ngày gửi | D6, D9 |
-| Tái tục gốc / gốc + lãi / không tái tục | Mục 7 |
+| Tái tục gốc / gốc + lãi / không tái tục | Mục 10 |
 | Lịch trả nợ đúng cho 4 phương thức, tổng gốc luôn đúng bằng số tiền vay | 5.1 |
 | Thanh toán trừ lãi trước gốc, kỳ cũ trước | L2, L8 |
 | Gửi lại cùng Idempotency-Key không trừ tiền 2 lần | L3 |
@@ -280,5 +378,12 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi thả nổi chỉ áp dụng từ kỳ bắt đầu sau ngày hiệu lực | L7 |
 | Trả hết thì khoản vay chuyển sang tất toán và khoá thanh toán | L10, L11 |
 | Tài sản ròng = gửi + lãi + cho vay − đi vay; dashboard cập nhật ngay | Mục 6 |
-| Người dùng chỉ thấy dữ liệu của mình | D12 |
+| Người dùng chỉ thấy dữ liệu của mình | D12, W13 |
 | Refresh token chỉ dùng được 1 lần | A3, A4 |
+| Số dư ví = số dư ban đầu + các giao dịch; sửa, chuyển ví, xoá giao dịch đều cập nhật số dư | W2, W7, W8 |
+| Lọc theo danh mục cha gồm cả danh mục con; chuyển tiền và điều chỉnh không tính là thu/chi | W4, W9, T6 |
+| Không xoá ví có giao dịch; ví lưu trữ không nhận giao dịch mới | W10, W11 |
+| Số tiền đúng số lẻ của tiền tệ | W12 |
+| Chuyển khác tiền tệ dùng tỷ giá của user, nghịch đảo khi cần; tổng ví quy đổi về một tiền tệ | T1–T5 |
+| Gửi lại cùng Idempotency-Key không ghi/chuyển 2 lần | W2, T4 |
+| Giao dịch định kỳ đúng lịch, không trôi ngày, không ghi trùng | R1, R2 |

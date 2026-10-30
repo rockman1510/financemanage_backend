@@ -25,6 +25,21 @@ class MoneyTest {
     }
 
     @Test
+    void rejectsUnknownCurrencyAsBusinessError() {
+        assertThatThrownBy(() -> Money.of(1, "XYZ"))
+                .isInstanceOf(DomainException.class).extracting("code").isEqualTo("INVALID_CURRENCY");
+    }
+
+    @Test
+    void checksMinorUnitPrecision() {
+        assertThat(Money.of("1000", "VND").hasMinorUnitPrecision()).isTrue();
+        assertThat(Money.of("1000.5", "VND").hasMinorUnitPrecision()).isFalse();
+        assertThat(Money.of("10.25", "USD").hasMinorUnitPrecision()).isTrue();
+        assertThat(Money.of("10.255", "USD").hasMinorUnitPrecision()).isFalse();
+        assertThat(Money.of("10.25", "USD").negated()).isEqualTo(Money.of("-10.25", "USD"));
+    }
+
+    @Test
     void roundsToCurrencyMinorUnit() {
         assertThat(Money.of("1234.5", "VND").rounded().amount()).isEqualByComparingTo("1235");
         assertThat(Money.of("10.005", "USD").rounded().amount()).isEqualByComparingTo("10.01");

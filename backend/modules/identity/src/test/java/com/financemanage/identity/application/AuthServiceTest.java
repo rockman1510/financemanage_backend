@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.financemanage.identity.api.IdentityEvents.UserRegistered;
 import com.financemanage.identity.domain.RefreshToken;
 import com.financemanage.identity.domain.RefreshTokenRepository;
 import com.financemanage.identity.domain.UserAccount;
@@ -15,7 +16,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +31,7 @@ class AuthServiceTest {
     private final UserAccountRepository users = mock(UserAccountRepository.class);
     private final RefreshTokenRepository refreshTokens = mock(RefreshTokenRepository.class);
     private final Map<String, RefreshToken> tokenStore = new HashMap<>();
+    private final List<Object> events = new ArrayList<>();
     private final Clock clock = Clock.fixed(Instant.parse("2025-01-01T00:00:00Z"), ZoneOffset.UTC);
     private AuthService service;
 
@@ -66,7 +70,7 @@ class AuthServiceTest {
         });
         when(refreshTokens.findByTokenHash(any()))
                 .thenAnswer(inv -> Optional.ofNullable(tokenStore.get(inv.<String>getArgument(0))));
-        service = new AuthService(users, refreshTokens, encoder, issuer, clock, Duration.ofDays(30));
+        service = new AuthService(users, refreshTokens, encoder, issuer, events::add, clock, Duration.ofDays(30));
     }
 
     @Test
@@ -77,6 +81,8 @@ class AuthServiceTest {
         assertThat(tokens.refreshToken()).isNotBlank();
         assertThat(tokens.expiresInSeconds()).isEqualTo(900);
         assertThat(tokenStore).hasSize(1);
+        assertThat(events).singleElement().isInstanceOfSatisfying(UserRegistered.class,
+                e -> assertThat(e.email()).isEqualTo("an@example.com"));
     }
 
     @Test
