@@ -24,5 +24,7 @@ include(
     "modules:reporting",
     "modules:ledger",
     "modules:currency",
+    "modules:budget",
+    "modules:bill",
     "app",
 )

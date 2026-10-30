@@ -48,6 +48,9 @@ class TransactionJpaEntity {
     UUID recurringId;
     @Column(name = "idempotency_key")
     String idempotencyKey;
+    String source;
+    @Column(name = "source_id")
+    UUID sourceId;
     @Column(name = "created_at", nullable = false, updatable = false)
     Instant createdAt;
     @Column(name = "updated_at", nullable = false)
