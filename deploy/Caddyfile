@@ -1,0 +1,32 @@
+# HTTPS reverse proxy; certificates from Let's Encrypt are obtained and renewed automatically for $DOMAIN.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# receipt photos are at most 5 MB (spring.servlet.multipart)
+	request_body {
+		max_size 8MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	reverse_proxy backend:8080 {
+		health_port 8081
+		health_uri /actuator/health/readiness
+		health_interval 15s
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
