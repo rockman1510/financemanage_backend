@@ -61,6 +61,20 @@ class TransactionServiceTest {
     }
 
     @Test
+    void aKeyUsedForATransactionCannotBeReusedForATransferAndViceVersa() {
+        record(cash, food, 50_000, "k-2");
+        service.transfer(OWNER, new TransferInput(bank.getId(), cash.getId(), BigDecimal.TEN, null, null, null),
+                "t-2");
+
+        assertThatThrownBy(() -> service.transfer(OWNER, new TransferInput(bank.getId(), cash.getId(),
+                BigDecimal.TEN, null, null, null), "k-2"))
+                .isInstanceOf(DomainException.class).extracting("code").isEqualTo("IDEMPOTENCY_KEY_REUSED");
+        assertThatThrownBy(() -> record(cash, food, 50_000, "t-2"))
+                .isInstanceOf(DomainException.class).extracting("code").isEqualTo("IDEMPOTENCY_KEY_REUSED");
+        assertThat(ledger.transactions.store).hasSize(3);
+    }
+
+    @Test
     void movingATransactionToAnotherWalletMovesTheMoney() {
         Transaction lunch = record(cash, food, 50_000, null);
 
