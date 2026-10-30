@@ -516,7 +516,53 @@ req GET "/wallets/$SW"
 check "Ví nhận lại 10tr" "$(j .balance)" "$(( BEFORE + 10000000 ))"
 
 # =====================================================================================
-section "16. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
+section "16. Đầu tư: mua/bán qua ví, cổ tức, giá, danh mục"
+register "invest$RUN_ID@example.com"
+req POST /wallets '{"name":"Chứng khoán","type":"BANK_ACCOUNT","initialBalance":50000000}'
+IW=$(j .id)
+wait_trades() { # wait_trades ASSET -> waits until no trade's cash is PENDING
+  for _ in $(seq 1 10); do req GET "/investments/$1"; [[ "$(j '[.trades[] | select(.cashStatus=="PENDING")] | length')" == "0" ]] && break; sleep 1; done
+}
+req POST /investments '{"name":"FPT","symbol":"fpt","type":"STOCK"}'
+check "Tạo tài sản cổ phiếu" "$STATUS|$(j .symbol)|$(j .currency)" "201|FPT|VND"
+ASSET=$(j .id)
+req POST "/investments/$ASSET/buys" "{\"quantity\":200,\"price\":100000,\"fee\":30000,\"walletId\":\"$IW\"}"
+check "Mua 200 cp giá 100k, phí 30k" "$STATUS|$(j .cash)|$(j .cashStatus)" "201|20030000|PENDING"
+wait_trades "$ASSET"
+check "Ghi nhận vào ví, giá vốn TB 100.150" "$(j '"\(.trades[0].cashStatus)|\(.averageCost)"')" "RECORDED|100150"
+req GET "/wallets/$IW"
+check "Ví bị trừ 20,03tr" "$(j .balance)" "29970000"
+req GET "/transactions?walletId=$IW"
+check "Giao dịch EXTERNAL_OUT nguồn INVESTMENT" "$(j '"\(.items[0].type)|\(.items[0].source)"')" "EXTERNAL_OUT|INVESTMENT"
+req POST "/investments/$ASSET/sells" "{\"quantity\":50,\"price\":120000,\"walletId\":\"$IW\"}"
+check "Bán 50 cp giá 120k → lãi thực hiện 992.500" "$STATUS|$(j .realized)" "201|992500"
+req POST "/investments/$ASSET/sells" '{"quantity":500,"price":1}'
+check "Không bán quá số đang nắm giữ" "$STATUS|$(j .code)" "422|INSUFFICIENT_QUANTITY"
+INTEREST=$(curl -s "$API/categories" -H "Authorization: Bearer $TOKEN" | jq -r '.[] | select(.code=="INTEREST") | .id')
+req POST "/investments/$ASSET/incomes" "{\"amount\":300000,\"walletId\":\"$IW\",\"categoryId\":\"$INTEREST\"}"
+check_status "Nhận cổ tức 300k vào ví (danh mục Tiền lãi)" 201
+req PUT "/investments/$ASSET/price" '{"price":110000}'
+check "Cập nhật giá 110k → giá trị 16,5tr, lãi chưa thực hiện 1.477.500" \
+  "$STATUS|$(j .quantity)|$(j .marketValue)|$(j .unrealized)|$(j .realized)" "200|150|16500000|1477500|1292500"
+wait_trades "$ASSET"
+req GET "/wallets/$IW"
+check "Ví: −20,03tr + 6tr + 300k" "$(j .balance)" "36270000"
+req GET /transactions/summary
+check "Chỉ cổ tức được tính là thu nhập" "$(j '"\(.[0].income+0)|\(.[0].expense+0)"')" "300000|0"
+req GET "/investments/portfolio?currency=VND"
+check "Danh mục: giá trị, tổng lợi nhuận, phân bổ" \
+  "$(j '"\(.marketValue)|\(.totalReturn)|\(.allocation[0].type)|\(.allocation[0].percent+0)"')" "16500000|2770000|STOCK|100"
+req POST /investments '{"name":"Bitcoin","symbol":"BTC","type":"CRYPTO","currency":"USD"}'
+BTC=$(j .id)
+req POST "/investments/$BTC/buys" '{"quantity":0.01,"price":60000}'
+check "Mua 0,01 BTC không qua ví (chỉ theo dõi)" "$STATUS|$(j .cash+0)|$(j .cashStatus)" "201|600|NONE"
+req GET "/investments/portfolio?currency=VND"
+check "Thiếu tỷ giá USD→VND thì báo lỗi" "$STATUS|$(j .code)" "422|EXCHANGE_RATE_MISSING"
+req DELETE "/investments/$BTC"
+check_status "Xoá tài sản" 204
+
+# =====================================================================================
+section "17. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
 ACC_EMAIL="account$RUN_ID@example.com"
 TOKEN=""
 req POST /auth/register "{\"email\":\"$ACC_EMAIL\",\"password\":\"secret123\",\"fullName\":\"Tài khoản Test\",\"deviceName\":\"Điện thoại\"}"
@@ -597,7 +643,7 @@ for _ in $(seq 1 10); do req GET "/wallets?includeArchived=true"; [[ "$(j length
 check "Dữ liệu ở các module khác cũng bị xoá (bất đồng bộ)" "$(j length)" "0"
 
 # =====================================================================================
-section "17. Job đáo hạn/tái tục & thông báo"
+section "18. Job đáo hạn/tái tục & thông báo"
 if [[ "$RUN_JOB_TESTS" != "1" ]]; then
   echo "  (bỏ qua – chạy app với cron nhanh và đặt RUN_JOB_TESTS=1, xem docs/API_TEST_GUIDE.md)"
 else

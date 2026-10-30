@@ -27,5 +27,6 @@ include(
     "modules:budget",
     "modules:bill",
     "modules:saving",
+    "modules:investment",
     "app",
 )
