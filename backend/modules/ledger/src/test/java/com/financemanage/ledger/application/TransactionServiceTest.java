@@ -9,6 +9,7 @@ import static com.financemanage.ledger.application.InMemoryLedger.TODAY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.financemanage.ledger.api.LedgerCommands.RecordExternalTransaction;
 import com.financemanage.ledger.api.LedgerEvents.TransactionDeleted;
 import com.financemanage.ledger.api.LedgerEvents.TransactionRecorded;
 import com.financemanage.ledger.api.LedgerEvents.TransactionUpdated;
@@ -18,6 +19,7 @@ import com.financemanage.ledger.domain.model.Transaction;
 import com.financemanage.ledger.domain.model.Transaction.TransferLegs;
 import com.financemanage.ledger.domain.model.TransactionFilter;
 import com.financemanage.ledger.domain.model.TransactionTotals;
+import com.financemanage.ledger.domain.model.TransactionType;
 import com.financemanage.ledger.domain.model.Wallet;
 import com.financemanage.shared.domain.DomainException;
 import com.financemanage.shared.domain.Money;
@@ -58,6 +60,31 @@ class TransactionServiceTest {
 
         assertThat(replay.getId()).isEqualTo(first.getId());
         assertThat(ledger.balance(cash)).isEqualTo(vnd(950_000));
+    }
+
+    @Test
+    void otherModulesCanRecordExpensesAndUncategorizedMovementsOnce() {
+        UUID requestId = UUID.randomUUID();
+        RecordExternalTransaction bill = new RecordExternalTransaction(requestId, "BILL", requestId, OWNER,
+                cash.getId(), false, food.getId(), new BigDecimal("200000"), "VND", null, "Hoá đơn");
+
+        Transaction first = service.recordExternal(bill);
+        Transaction replay = service.recordExternal(bill);
+        Transaction saving = service.recordExternal(new RecordExternalTransaction(UUID.randomUUID(), "SAVING",
+                UUID.randomUUID(), OWNER, cash.getId(), false, null, new BigDecimal("300000"), "VND", null, null));
+
+        assertThat(replay.getId()).isEqualTo(first.getId());
+        assertThat(first.getType()).isEqualTo(TransactionType.EXPENSE);
+        assertThat(first.getOrigin().source()).isEqualTo("BILL");
+        assertThat(saving.getType()).isEqualTo(TransactionType.EXTERNAL_OUT);
+        assertThat(saving.isExcludeFromReport()).isTrue();
+        assertThat(ledger.balance(cash)).isEqualTo(vnd(500_000));
+        assertThatThrownBy(() -> service.recordExternal(new RecordExternalTransaction(UUID.randomUUID(), "BILL",
+                UUID.randomUUID(), OWNER, cash.getId(), true, food.getId(), BigDecimal.TEN, "VND", null, null)))
+                .isInstanceOf(DomainException.class).extracting("code").isEqualTo("CATEGORY_TYPE_MISMATCH");
+        assertThatThrownBy(() -> service.recordExternal(new RecordExternalTransaction(UUID.randomUUID(), "BILL",
+                UUID.randomUUID(), OWNER, cash.getId(), false, null, BigDecimal.TEN, "USD", null, null)))
+                .isInstanceOf(DomainException.class).extracting("code").isEqualTo("CURRENCY_MISMATCH");
     }
 
     @Test

@@ -52,7 +52,8 @@ class TransactionTest {
 
     @Test
     void blankTextsAreStoredAsNull() {
-        Transaction t = Transaction.record(new NewTransaction(OWNER, vnd(1), DAY, "   ", " An ", false, null, null),
+        Transaction t = Transaction.record(
+                new NewTransaction(OWNER, vnd(1), DAY, "   ", " An ", false, null, null, null),
                 cash, expense("Ăn uống"));
 
         assertThat(t.getNote()).isNull();
@@ -115,6 +116,6 @@ class TransactionTest {
     }
 
     private static NewTransaction spec(Money amount) {
-        return new NewTransaction(OWNER, amount, DAY, null, null, false, null, null);
+        return new NewTransaction(OWNER, amount, DAY, null, null, false, null, null, null);
     }
 }

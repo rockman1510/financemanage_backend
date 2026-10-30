@@ -19,3 +19,5 @@ app:
     refresh-cron: "-"
   identity:
     cleanup-cron: "-"
+  bill:
+    reminder-cron: "-"

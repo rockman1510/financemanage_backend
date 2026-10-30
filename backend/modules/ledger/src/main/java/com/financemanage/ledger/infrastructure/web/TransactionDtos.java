@@ -82,8 +82,8 @@ final class TransactionDtos {
     record TransactionResponse(UUID id, UUID walletId, TransactionType type, BigDecimal amount, String currency,
                                UUID categoryId, LocalDate occurredOn, String note, String withPerson,
                                boolean excludeFromReport, UUID transferId, UUID counterpartWalletId,
-                               BigDecimal exchangeRate, UUID recurringId, Instant createdAt,
-                               List<AttachmentResponse> attachments) {
+                               BigDecimal exchangeRate, UUID recurringId, String source, UUID sourceId,
+                               Instant createdAt, List<AttachmentResponse> attachments) {
 
         static TransactionResponse from(Transaction t) {
             return from(t, null);
@@ -94,7 +94,8 @@ final class TransactionDtos {
                     t.getAmount().currencyCode(), t.getCategoryId(), t.getOccurredOn(), t.getNote(),
                     t.getWithPerson(), t.isExcludeFromReport(), t.getTransferId(), t.getCounterpartWalletId(),
                     plain(t.getExchangeRate()), t.getRecurringId(),
-                    t.getCreatedAt(),
+                    t.getOrigin() == null ? null : t.getOrigin().source(),
+                    t.getOrigin() == null ? null : t.getOrigin().sourceId(), t.getCreatedAt(),
                     attachments == null ? null : attachments.stream().map(AttachmentResponse::from).toList());
         }
     }

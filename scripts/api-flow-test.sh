@@ -402,7 +402,46 @@ check_status "Xoá ảnh đính kèm" 204
 rm -f /tmp/api-flow-test-$RUN_ID.png
 
 # =====================================================================================
-section "13. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
+section "13. Ngân sách & hoá đơn"
+register "budget$RUN_ID@example.com"
+req GET /categories
+FOOD=$(j '.[] | select(.code=="FOOD") | .id'); COFFEE=$(j '.[] | select(.code=="FOOD_COFFEE") | .id')
+RENT=$(j '.[] | select(.code=="BILLS_RENT") | .id'); SALARY=$(j '.[] | select(.code=="SALARY") | .id')
+req POST /wallets '{"name":"Tiền mặt","type":"CASH","initialBalance":10000000}'
+WALLET=$(j .id)
+MONTH_START="$(today | cut -c1-8)01"
+req POST /budgets "{\"name\":\"Ăn uống\",\"amount\":1000000,\"categoryIds\":[\"$FOOD\"],\"period\":\"MONTHLY\"}"
+check_status "Tạo ngân sách tháng" 201
+BUDGET=$(j .id)
+check "Bắt đầu từ ngày 1, chưa chi gì" "$(j '"\(.startDate)|\(.current.state)|\(.current.remaining)"')" "$MONTH_START|ON_TRACK|1000000"
+req POST /budgets "{\"name\":\"Sai\",\"amount\":1,\"categoryIds\":[\"$SALARY\"],\"period\":\"MONTHLY\"}"
+check "Không lập ngân sách cho danh mục thu" "$STATUS|$(j .code)" "422|INVALID_CATEGORY"
+req POST /transactions "{\"walletId\":\"$WALLET\",\"categoryId\":\"$COFFEE\",\"amount\":850000}"
+req GET "/budgets/$BUDGET"
+check "Chi 850k ở danh mục con → 85%, cảnh báo" "$(j '"\(.current.spent)|\(.current.percent)|\(.current.state)"')" "850000|85|WARNING"
+DAYS_LEFT=$(j .current.daysLeft)
+check "Gợi ý mỗi ngày = 150.000 / số ngày còn lại (làm tròn xuống)" "$(j .current.dailySuggestion)" "$(( 150000 / DAYS_LEFT ))"
+
+req POST /bills "{\"name\":\"Tiền nhà\",\"amount\":5000000,\"walletId\":\"$WALLET\",\"categoryId\":\"$RENT\",\"frequency\":\"MONTHLY\",\"firstDueDate\":\"$(today)\"}"
+check_status "Tạo hoá đơn hằng tháng" 201
+BILL=$(j .id)
+check "Đến hạn hôm nay" "$(j '"\(.nextDueDate)|\(.daysUntilDue)|\(.overdue)"')" "$(today)|0|false"
+req GET "/bills/upcoming?days=7"
+check "Có trong danh sách sắp đến hạn" "$(j length)" "1"
+req POST "/bills/$BILL/pay"
+check "Thanh toán hoá đơn → 202, chờ sổ thu chi ghi nhận" "$STATUS|$(j .status)" "202|PENDING"
+for _ in $(seq 1 10); do req GET "/bills/$BILL"; [[ "$(j '.payments[0].status')" == "RECORDED" ]] && break; sleep 1; done
+check "Sổ thu chi đã ghi khoản chi" "$(j '.payments[0].status')" "RECORDED"
+check "Chuyển sang kỳ tiếp theo" "$( [[ "$(j .nextDueDate)" > "$(today)" ]] && echo yes)" "yes"
+req GET "/wallets/$WALLET"
+check "Ví bị trừ 850k + 5tr" "$(j .balance)" "4150000"
+req GET "/transactions?categoryId=$RENT"
+check "Giao dịch ghi nguồn BILL" "$(j '.items[0].source')" "BILL"
+req POST "/bills/$BILL/skip"
+check "Bỏ qua một kỳ" "$STATUS|$(j .status)" "200|SKIPPED"
+
+# =====================================================================================
+section "14. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
 ACC_EMAIL="account$RUN_ID@example.com"
 TOKEN=""
 req POST /auth/register "{\"email\":\"$ACC_EMAIL\",\"password\":\"secret123\",\"fullName\":\"Tài khoản Test\",\"deviceName\":\"Điện thoại\"}"
@@ -483,7 +522,7 @@ for _ in $(seq 1 10); do req GET "/wallets?includeArchived=true"; [[ "$(j length
 check "Dữ liệu ở các module khác cũng bị xoá (bất đồng bộ)" "$(j length)" "0"
 
 # =====================================================================================
-section "14. Job đáo hạn/tái tục & thông báo"
+section "15. Job đáo hạn/tái tục & thông báo"
 if [[ "$RUN_JOB_TESTS" != "1" ]]; then
   echo "  (bỏ qua – chạy app với cron nhanh và đặt RUN_JOB_TESTS=1, xem docs/API_TEST_GUIDE.md)"
 else

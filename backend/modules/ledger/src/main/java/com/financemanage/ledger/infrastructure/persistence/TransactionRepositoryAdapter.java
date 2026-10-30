@@ -70,6 +70,8 @@ class TransactionRepositoryAdapter implements TransactionRepository {
         e.exchangeRate = t.getExchangeRate();
         e.recurringId = t.getRecurringId();
         e.idempotencyKey = t.getIdempotencyKey();
+        e.source = t.getOrigin() == null ? null : t.getOrigin().source();
+        e.sourceId = t.getOrigin() == null ? null : t.getOrigin().sourceId();
         e.updatedAt = Instant.now();
         return toDomain(jpa.saveAndFlush(e));
     }
@@ -147,6 +149,7 @@ class TransactionRepositoryAdapter implements TransactionRepository {
     private Transaction toDomain(TransactionJpaEntity e) {
         return new Transaction(e.id, e.ownerId, e.walletId, e.type, Money.of(e.amount, e.currency), e.categoryId,
                 e.occurredOn, e.note, e.withPerson, e.excludeFromReport, e.transferId, e.counterpartWalletId,
-                e.exchangeRate, e.recurringId, e.idempotencyKey, e.createdAt, e.version);
+                e.exchangeRate, e.recurringId, e.idempotencyKey,
+                e.source == null ? null : new Transaction.Origin(e.source, e.sourceId), e.createdAt, e.version);
     }
 }

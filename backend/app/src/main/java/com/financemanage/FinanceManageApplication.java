@@ -9,7 +9,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Modular monolith: assembles the identity, ledger, currency, deposit, loan, notification and reporting modules.
+ * Modular monolith: assembles the identity, ledger, currency, budget, bill, deposit, loan, notification and
+ * reporting modules.
  */
 @SpringBootApplication
 @Modulithic(systemName = "Finance Manage", sharedModules = "shared")
