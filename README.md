@@ -9,7 +9,9 @@
 | [`mobile/`](mobile) | React Native · Expo SDK 57 · Expo Router · TanStack Query · Zustand · React Hook Form + Zod |
 | [`docs/`](docs) | Kế hoạch kiến trúc, [phạm vi tính năng mở rộng](docs/FEATURE_SCOPE.md) |
 | `docker-compose.yml` | PostgreSQL + backend để chạy local |
-| `.github/workflows/ci.yml` | CI: build/test backend, typecheck/lint/test mobile |
+| `docker-compose.prod.yml`, `deploy/`, `.env.prod.example` | Triển khai production trên một VPS: Caddy (HTTPS), Redis, backup mã hoá ra object storage, Prometheus – xem [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| `.github/workflows/ci.yml` | CI: build/test backend, dựng image Docker, typecheck/lint/test mobile |
+| `.github/workflows/release.yml` | Dựng và đẩy image backend/backup lên GitHub Container Registry |
 
 ## Chạy nhanh
 

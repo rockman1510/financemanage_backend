@@ -1,0 +1,167 @@
+# Production stack for one VPS (plan A): Caddy (HTTPS) → backend → PostgreSQL + Redis, nightly backups.
+#   cp .env.prod.example .env      # fill in the secrets
+#   docker compose -f docker-compose.prod.yml up -d
+# Monitoring (Prometheus on 127.0.0.1:9090): add --profile monitoring. Full guide: docs/DEPLOYMENT.md
+name: financemanage
+
+x-restart: &restart
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 20m
+      max-file: "5"
+
+services:
+  postgres:
+    <<: *restart
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-financemanage}
+      POSTGRES_USER: ${DB_USERNAME:-financemanage}
+      # the image refuses to initialise the database without it
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    command: >
+      postgres -c max_connections=50 -c shared_buffers=256MB -c effective_cache_size=768MB
+      -c work_mem=8MB -c maintenance_work_mem=64MB -c log_min_duration_statement=500
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      retries: 10
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    # cache only: no persistence, oldest keys evicted when full
+    # the password comes from the container environment (below); without one Redis does not start
+    command:
+      - sh
+      - -c
+      - '[ -n "$$REDIS_PASSWORD" ] || { echo "set REDIS_PASSWORD in .env" >&2; exit 1; };
+        exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb --maxmemory-policy allkeys-lru
+        --save "" --appendonly no'
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  backend:
+    <<: *restart
+    # built by the "release" workflow; or build on the server: docker compose -f docker-compose.prod.yml build
+    image: ${BACKEND_IMAGE:-ghcr.io/rockman1510/financemanage-backend:latest}
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-financemanage}
+      DB_USERNAME: ${DB_USERNAME:-financemanage}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY in .env}
+      CACHE_TYPE: redis
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_HEALTH_ENABLED: "true"
+      # actuator (health, Prometheus metrics) only on the internal port 8081, never through Caddy
+      MANAGEMENT_SERVER_PORT: "8081"
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      SPRINGDOC_API_DOCS_ENABLED: ${API_DOCS_ENABLED:-false}
+      SPRINGDOC_SWAGGER_UI_ENABLED: ${API_DOCS_ENABLED:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+      EXPO_PUSH_ENABLED: ${EXPO_PUSH_ENABLED:-true}
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      SPRING_MAIL_HOST: ${SMTP_HOST:-}
+      SPRING_MAIL_PORT: ${SMTP_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SMTP_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD:-}
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError
+    volumes:
+      - attachments:/app/data/attachments
+    expose:
+      - "8080"
+      - "8081"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 15s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEMORY:-1g}
+
+  caddy:
+    <<: *restart
+    image: caddy:2-alpine
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  backup:
+    <<: *restart
+    image: ${BACKUP_IMAGE:-ghcr.io/rockman1510/financemanage-backup:latest}
+    build: ./deploy/backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${DB_NAME:-financemanage}
+      PGUSER: ${DB_USERNAME:-financemanage}
+      PGPASSWORD: ${DB_PASSWORD}
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      BACKUP_TIME: ${BACKUP_TIME:-02:30}
+      LOCAL_RETENTION_DAYS: ${BACKUP_LOCAL_RETENTION_DAYS:-7}
+      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: ${S3_PREFIX:-financemanage}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${S3_REGION:-auto}
+    volumes:
+      - backups:/backups
+      - attachments:/attachments:ro
+
+  prometheus:
+    <<: *restart
+    image: prom/prometheus:v3.5.0
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"   # open through an SSH tunnel: ssh -L 9090:localhost:9090 user@vps
+
+volumes:
+  pgdata:
+  attachments:
+  backups:
+  caddy_data:
+  caddy_config:
+  prometheus:
