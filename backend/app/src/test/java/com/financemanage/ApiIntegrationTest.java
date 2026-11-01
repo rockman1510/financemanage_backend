@@ -711,11 +711,23 @@ class ApiIntegrationTest {
         String token = "ExponentPushToken[" + UUID.randomUUID().toString().replace("-", "") + "]";
         mvc.perform(auth(json(post("/api/v1/notifications/devices"),
                         "{\"token\":\"%s\",\"platform\":\"ios\",\"deviceName\":\"iPhone\"}".formatted(token))))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.provider").value("EXPO"));
+        // a KMP app registers its FCM registration token; the provider is recognised from the token
+        String fcmToken = "dGVzdC1pbnN0YW5jZQ:APA91b" + UUID.randomUUID().toString().replace("-", "").repeat(4);
+        mvc.perform(auth(json(post("/api/v1/notifications/devices"),
+                        "{\"token\":\"%s\",\"platform\":\"android\"}".formatted(fcmToken))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.provider").value("FCM"));
         mvc.perform(auth(json(post("/api/v1/notifications/devices"), "{\"token\":\"not-a-token\"}")))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code").value("INVALID_PUSH_TOKEN"));
-        mvc.perform(auth(get("/api/v1/notifications/devices"))).andExpect(jsonPath("$", hasSize(1)));
+        mvc.perform(auth(json(post("/api/v1/notifications/devices"),
+                        "{\"token\":\"%s\",\"provider\":\"EXPO\"}".formatted(fcmToken))))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("INVALID_PUSH_TOKEN"));
+        mvc.perform(auth(get("/api/v1/notifications/devices"))).andExpect(jsonPath("$", hasSize(2)));
+        mvc.perform(auth(delete("/api/v1/notifications/devices/" + fcmToken))).andExpect(status().isNoContent());
 
         String categories = mvc.perform(auth(get("/api/v1/categories"))).andReturn().getResponse()
                 .getContentAsString();

@@ -78,6 +78,8 @@ services:
       GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
       EXPO_PUSH_ENABLED: ${EXPO_PUSH_ENABLED:-true}
       EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+      FCM_ENABLED: ${FCM_ENABLED:-false}
+      FCM_CREDENTIALS_FILE: /run/secrets/firebase-service-account.json
       MAIL_FROM: ${MAIL_FROM:-}
       SPRING_MAIL_HOST: ${SMTP_HOST:-}
       SPRING_MAIL_PORT: ${SMTP_PORT:-587}
@@ -87,6 +89,7 @@ services:
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError
     volumes:
       - attachments:/app/data/attachments
+      - ./secrets:/run/secrets:ro   # firebase-service-account.json for FCM (only read when FCM_ENABLED=true)
     expose:
       - "8080"
       - "8081"

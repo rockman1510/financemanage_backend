@@ -10,6 +10,8 @@ public interface PushDeviceRepository extends JpaRepository<PushDevice, String> 
 
     List<PushDevice> findByOwnerId(UUID ownerId);
 
+    List<PushDevice> findByOwnerIdAndProvider(UUID ownerId, PushProvider provider);
+
     @Modifying
     @Query("delete from PushDevice d where d.ownerId = :ownerId")
     void deleteByOwnerId(UUID ownerId);

@@ -463,9 +463,14 @@ req PUT /notifications/preferences '{"quietStart":"22:00"}'
 check "Khung giờ yên lặng phải có đủ 2 đầu" "$STATUS|$(j .code)" "422|INVALID_QUIET_HOURS"
 PUSH_TOKEN="ExponentPushToken[test$RUN_ID]"
 req POST /notifications/devices "{\"token\":\"$PUSH_TOKEN\",\"platform\":\"android\",\"deviceName\":\"Pixel\"}"
-check_status "Đăng ký thiết bị nhận push" 201
+check "Đăng ký thiết bị nhận push (Expo)" "$STATUS|$(j .provider)" "201|EXPO"
+FCM_TOKEN="fcm$RUN_ID:APA91b$(printf 'x%.0s' $(seq 1 140))"
+req POST /notifications/devices "{\"token\":\"$FCM_TOKEN\",\"platform\":\"ios\",\"deviceName\":\"iPhone\"}"
+check "Đăng ký thiết bị của app KMP (FCM)" "$STATUS|$(j .provider)" "201|FCM"
 req POST /notifications/devices '{"token":"abc"}'
-check "Token không đúng định dạng Expo" "$STATUS|$(j .code)" "422|INVALID_PUSH_TOKEN"
+check "Token không đúng định dạng" "$STATUS|$(j .code)" "422|INVALID_PUSH_TOKEN"
+req DELETE "/notifications/devices/$FCM_TOKEN"
+check_status "Huỷ đăng ký thiết bị FCM" 204
 req POST /notifications/read-all
 req GET /notifications/unread-count
 check "Đánh dấu tất cả đã đọc" "$(j .count)" "0"

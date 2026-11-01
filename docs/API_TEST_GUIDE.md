@@ -39,8 +39,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 236 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 19 (job) được bỏ
-qua (còn 227 kiểm tra). Phần mã gửi qua email (mục 18) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 238 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 19 (job) được bỏ
+qua (còn 229 kiểm tra). Phần mã gửi qua email (mục 18) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -365,9 +365,15 @@ Quy tắc hoá đơn:
 
 Quy tắc:
 
-- Thông báo luôn được lưu trong app (`GET $API/notifications`, 50 cái mới nhất). Nếu thiết bị đã đăng ký push token
-  Expo (`ExponentPushToken[…]`) thì được đẩy qua **Expo Push** (Expo chuyển tiếp sang FCM/APNs). Token Expo báo
-  `DeviceNotRegistered` (app đã gỡ) tự bị xoá. Lỗi gửi push chỉ ghi log, không ảnh hưởng thông báo trong app.
+- Thông báo luôn được lưu trong app (`GET $API/notifications`, 50 cái mới nhất) và được đẩy tới các thiết bị đã đăng
+  ký token push:
+  - token Expo (`ExponentPushToken[…]`, app Expo) qua **Expo Push**; token Expo báo `DeviceNotRegistered` (app đã gỡ)
+    tự bị xoá;
+  - token **FCM** (app KMP, Android và iOS) qua **Firebase Cloud Messaging** khi bật `FCM_ENABLED` (mục cấu hình trong
+    `backend/README.md`); token FCM báo `UNREGISTERED` tự bị xoá.
+
+  `provider` (`EXPO`/`FCM`) được nhận ra từ token nếu không gửi. Lỗi gửi push chỉ ghi log, không ảnh hưởng thông báo
+  trong app.
 - **Cài đặt**: `disabledTypes` = các loại không tạo thông báo; `quietStart`–`quietEnd` (có thể qua nửa đêm) = vẫn lưu
   trong app nhưng **không đẩy push**; nhắc ghi chép hằng ngày bật/tắt và giờ nhắc riêng.
 - **Nhắc ghi chép**: job chạy đầu mỗi giờ (`app.notification.daily-reminder-cron`), nhắc người dùng đến giờ nhắc
@@ -378,7 +384,7 @@ Quy tắc:
 |---|---|---|---|
 | N1 | Cảnh báo ngân sách | Sau B3 (chi 85% ngân sách): `curl -s $API/notifications -H "$AUTH" \| jq '.[] \| {type,body}'` | Có đúng 1 `BUDGET_WARNING`: "Ngân sách "Ăn uống" đã dùng 850.000 VND / 1.000.000 VND (85%)." |
 | N2 | Xem / đổi cài đặt | `curl -s $API/notifications/preferences -H "$AUTH" \| jq`; `curl -s -X PUT $API/notifications/preferences -H "$AUTH" -H "$JSON" -d '{"disabledTypes":["BILL_DUE_SOON"],"dailyReminderTime":"21:00","quietStart":"22:00","quietEnd":"07:00"}' \| jq` | Mặc định: `dailyReminderEnabled=true`, `20:00:00`. Sau khi đổi: giá trị mới. Chỉ có `quietStart`: `422 INVALID_QUIET_HOURS` |
-| N3 | Đăng ký push | `curl -s -X POST $API/notifications/devices -H "$AUTH" -H "$JSON" -d '{"token":"ExponentPushToken[xxxxxxxxxxxx]","platform":"android","deviceName":"Pixel"}'` | `201`; `GET $API/notifications/devices` có thiết bị. Token sai định dạng: `422 INVALID_PUSH_TOKEN` |
+| N3 | Đăng ký push | `curl -s -X POST $API/notifications/devices -H "$AUTH" -H "$JSON" -d '{"token":"ExponentPushToken[xxxxxxxxxxxx]","platform":"android","deviceName":"Pixel"}'` | `201`, `provider=EXPO`; `GET $API/notifications/devices` có thiết bị. Token FCM (chuỗi dài không có `ExponentPushToken`) → `provider=FCM`. Token sai định dạng: `422 INVALID_PUSH_TOKEN` |
 | N4 | Đánh dấu tất cả đã đọc | `curl -s -X POST $API/notifications/read-all -H "$AUTH"` | `{"marked":n}`; `unread-count` về `0` |
 | N5 | Huỷ push | `curl -si -X DELETE "$API/notifications/devices/ExponentPushToken%5Bxxxxxxxxxxxx%5D" -H "$AUTH"` (mã hoá `[ ]`) | `204` |
 
