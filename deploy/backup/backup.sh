@@ -21,8 +21,15 @@ s3() {
 }
 
 seal() { # seal FILE -> prints the file to keep (encrypted when a passphrase is set)
+  # "set -e" does not apply inside $(…): every failure is checked here, and the plain file is only removed once
+  # the encrypted copy exists
   if [ -n "${BACKUP_PASSPHRASE:-}" ]; then
-    openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE -in "$1" -out "$1.enc"
+    if ! openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE -in "$1" -out "$1.enc" \
+        || [ ! -s "$1.enc" ]; then
+      rm -f "$1.enc"
+      log "encryption of $(basename "$1") failed; the unencrypted file is kept" >&2
+      return 1
+    fi
     rm -f "$1"
     echo "$1.enc"
   else
@@ -38,8 +45,8 @@ run_backup() {
   pg_dump --format=custom --compress=9 --no-owner --file="$db.part"
   mv "$db.part" "$db"
   tar -czf "$files" -C /attachments .
-  db=$(seal "$db")
-  files=$(seal "$files")
+  db=$(seal "$db") || exit 1
+  files=$(seal "$files") || exit 1
   log "created $(basename "$db") ($(du -h "$db" | cut -f1)), $(basename "$files")"
   if [ -n "${S3_BUCKET:-}" ]; then
     for f in "$db" "$files"; do

@@ -1,2 +1,25 @@
-# secrets of docker-compose.prod.yml
+# Local secrets: .env of docker-compose.prod.yml, mobile/.env… (only the *.example templates are committed)
 .env
+.env.*
+!.env.example
+!.env.*.example
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.swp
+*~
+
+# Logs, database dumps and backups made on a developer machine
+*.log
+*.dump
+*.dump.enc
+backups/

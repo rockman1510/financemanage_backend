@@ -45,7 +45,18 @@ check_status() { check "$1 → HTTP $2" "$STATUS" "$2"; }
 # --- ngày tháng (GNU date hoặc BSD/macOS date) ---
 today() { date +%F; }
 add_days() { date -d "$(today) $1 days" +%F 2>/dev/null || date -j -v"$( [[ $1 == -* ]] && echo "$1" || echo "+$1")"d +%F; }
-minus_month() { date -d "$1 -1 month" +%F 2>/dev/null || date -j -f %F "$1" -v-1m +%F; }
+# same day one month earlier, clamped to the last day of that month (2026-10-31 → 2026-09-30); plain
+# "date -d '… -1 month'" would give 2026-10-01 instead
+minus_month() {
+  local y m d first last
+  IFS=- read -r y m d <<<"$1"
+  y=$((10#$y)); m=$((10#$m - 1)); d=$((10#$d))
+  if (( m == 0 )); then m=12; y=$((y - 1)); fi
+  first=$(printf '%04d-%02d-01' "$y" "$m")
+  last=$(date -d "$first +1 month -1 day" +%d 2>/dev/null || date -j -f %F "$first" -v+1m -v-1d +%d)
+  (( d > 10#$last )) && d=$((10#$last))
+  printf '%04d-%02d-%02d\n' "$y" "$m" "$d"
+}
 
 register() { # register EMAIL -> đặt TOKEN, REFRESH
   TOKEN=""
@@ -701,7 +712,9 @@ else
   req POST /deposits "{\"institutionName\":\"SoonBank\",\"type\":\"TERM\",\"principal\":1000000,\"annualRate\":5,\"termMonths\":1,\"openDate\":\"$(minus_month "$TARGET")\"}"
   SOON_MATURITY=$(j .maturityDate)
   req POST /loans "{\"counterpartyName\":\"DueSoon\",\"direction\":\"BORROW\",\"principal\":3000000,\"termMonths\":1,\"startDate\":\"$(minus_month "$(add_days 3)")\",\"repaymentMethod\":\"INTEREST_FREE\"}"
+  DUE_SOON=$(j .summary.nextDueDate)
   req POST /loans "{\"counterpartyName\":\"Late\",\"direction\":\"LEND\",\"principal\":2000000,\"termMonths\":1,\"startDate\":\"$(minus_month "$(add_days -1)")\",\"repaymentMethod\":\"INTEREST_FREE\"}"
+  LATE_DUE=$(j .summary.nextDueDate)
 
   echo "  … chờ job chạy (tối đa 60 giây)"
   for _ in $(seq 1 30); do
@@ -722,8 +735,17 @@ else
   if [[ "$SOON_MATURITY" == "$TARGET" ]]; then
     check "Có nhắc sổ sắp đáo hạn (7 ngày)" "$(grep -c DEPOSIT_MATURING_SOON <<<"$TYPES")" "1"
   fi
-  check "Có nhắc kỳ trả nợ sắp tới (3 ngày)" "$(grep -c INSTALLMENT_DUE_SOON <<<"$TYPES")" "1"
-  check "Có cảnh báo quá hạn (hạn hôm qua)" "$(grep -c INSTALLMENT_OVERDUE <<<"$TYPES")" "1"
+  # a 1-month loan cannot fall due on e.g. the 31st after a 30-day month: then the check is skipped
+  if [[ "$DUE_SOON" == "$(add_days 3)" ]]; then
+    check "Có nhắc kỳ trả nợ sắp tới (3 ngày)" "$(grep -c INSTALLMENT_DUE_SOON <<<"$TYPES")" "1"
+  else
+    echo "  (bỏ qua nhắc kỳ trả nợ: không tạo được kỳ hạn đúng $(add_days 3), kỳ hạn là $DUE_SOON)"
+  fi
+  if [[ "$LATE_DUE" == "$(add_days -1)" ]]; then
+    check "Có cảnh báo quá hạn (hạn hôm qua)" "$(grep -c INSTALLMENT_OVERDUE <<<"$TYPES")" "1"
+  else
+    echo "  (bỏ qua cảnh báo quá hạn: không tạo được kỳ hạn đúng $(add_days -1), kỳ hạn là $LATE_DUE)"
+  fi
   N_ID=$(j '.[0].id')
   req POST "/notifications/$N_ID/read"
   check_status "Đánh dấu đã đọc" 204
