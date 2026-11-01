@@ -24,7 +24,8 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | `app.security.jwt.access-token-ttl` / `refresh-token-ttl` | `PT15M` / `P30D` | Thời hạn token |
 | `ENCRYPTION_KEY` (`app.security.encryption-key`) | – | Khoá mã hoá secret 2FA trong DB (≥ 32 ký tự). **Bắt buộc đổi ở production**; đổi khoá thì 2FA đã bật không dùng được nữa |
 | `GOOGLE_CLIENT_IDS` (`app.identity.google.client-ids`) | trống | OAuth client id (web, Android, iOS) được chấp nhận làm `aud` của Google ID token. Trống = tắt đăng nhập Google |
-| `spring.mail.host`, `port`, `username`, `password`, `MAIL_FROM` | – | SMTP gửi email (mã xác thực, đặt lại mật khẩu). Không cấu hình thì email không được gửi (chỉ ghi log). Profile `dev`/`test` dùng hộp thư giả |
+| `spring.mail.host`, `port`, `username`, `password`, `MAIL_FROM` | – | SMTP gửi email (mã xác thực, đặt lại mật khẩu). Không cấu hình (hoặc host trống) thì email không được gửi (chỉ ghi log). Profile `dev`/`test` dùng hộp thư giả |
+| `management.server.port` (`MANAGEMENT_SERVER_PORT`) | trống (dùng chung 8080) | Cổng riêng cho actuator; production đặt `8081` (không qua reverse proxy) và Prometheus đọc `/actuator/prometheus` ở cổng này không cần token |
 | `app.identity.login.max-attempts`, `lock-duration` | `5`, `PT15M` | Khoá tài khoản sau N lần sai mật khẩu |
 | `app.identity.verification.code-ttl`, `max-attempts`, `resend-cooldown` | `PT15M`, `5`, `PT1M` | Mã gửi qua email |
 | `app.identity.two-factor.issuer`, `challenge-ttl`, `max-attempts` | `FinanceManage`, `PT5M`, `5` | 2FA (TOTP) |

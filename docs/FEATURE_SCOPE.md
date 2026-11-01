@@ -187,9 +187,17 @@ Thời gian ước tính tính theo **1 lập trình viên toàn thời gian**, 
   cho vay, đi vay, quy đổi về tiền tệ mặc định; xuất CSV.
 - Cache dashboard chuyển sang Redis được bằng cấu hình.
 
-### GĐ 8 – Hoàn thiện và triển khai (phương án A)
+### GĐ 8 – Hoàn thiện và triển khai (phương án A) – xong
 - `docker-compose.prod.yml`, Caddy/Nginx + HTTPS, biến môi trường/secret, backup PostgreSQL tự động ra object storage.
 - Kiểm tra hiệu năng các truy vấn chính (index), Actuator/Prometheus, hướng dẫn deploy lên VPS trong `docs/`.
+- Kết quả:
+  - `docker-compose.prod.yml` gồm Caddy (HTTPS tự động), backend, PostgreSQL, Redis (cache), dịch vụ backup và
+    Prometheus (profile `monitoring`); khai báo cấu hình trong `.env.prod.example`.
+  - Backup hằng đêm: `pg_dump` + ảnh hoá đơn, mã hoá AES-256, đẩy lên S3/R2/B2; có `restore.sh`.
+  - Actuator chỉ mở ở cổng nội bộ 8081.
+  - Index mới cho job dọn token/mã hết hạn và xoá tài khoản.
+  - Workflow `release.yml` đẩy image lên GHCR.
+  - Hướng dẫn chi tiết ở [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## 4. Nguyên tắc để sau này tách thành hệ thống phân tán dễ dàng
 

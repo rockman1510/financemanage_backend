@@ -21,6 +21,15 @@ jobs:
       # unit tests, module-boundary verification and API tests (H2 + PostgreSQL via Testcontainers)
       - run: ./gradlew build
 
+  # production images build and the production compose file is valid
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t financemanage-backend:ci backend
+      - run: docker build -t financemanage-backup:ci deploy/backup
+      - run: cp .env.prod.example .env && docker compose -f docker-compose.prod.yml config -q
+
   mobile:
     runs-on: ubuntu-latest
     defaults:
