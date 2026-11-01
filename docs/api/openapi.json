@@ -4887,8 +4887,15 @@
         "properties": {
           "token": {
             "type": "string",
-            "maxLength": 200,
+            "maxLength": 500,
             "minLength": 0
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "EXPO",
+              "FCM"
+            ]
           },
           "platform": {
             "type": "string",
@@ -4910,6 +4917,13 @@
         "properties": {
           "token": {
             "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "EXPO",
+              "FCM"
+            ]
           },
           "platform": {
             "type": "string"

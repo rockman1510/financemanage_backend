@@ -476,16 +476,32 @@ Tham số chung: `from`, `to` (mặc định tháng hiện tại, tối đa 10 n
 | `GET /notifications/unread-count` | `{"count": 3}` – dùng cho badge |
 | `POST /notifications/{id}/read` → 204, `POST /notifications/read-all` → `{"marked": n}` | |
 | `GET/PUT /notifications/preferences` | `{disabledTypes, dailyReminderEnabled, dailyReminderTime, quietStart, quietEnd}` (+ `timeZone` khi đọc). Loại bị tắt không được tạo; trong giờ yên lặng (có thể qua nửa đêm) thông báo vẫn lưu nhưng không push |
-| `POST /notifications/devices` `{token*, platform?, deviceName?}`, `GET`, `DELETE /notifications/devices/{token}` | Đăng ký token push của thiết bị; xoá khi đăng xuất |
+| `POST /notifications/devices` `{token*, provider?, platform?, deviceName?}`, `GET`, `DELETE /notifications/devices/{token}` | Đăng ký token push của thiết bị (`provider`: `FCM` cho app KMP, `EXPO` cho app Expo; bỏ trống thì backend nhận ra từ token); xoá khi đăng xuất |
 
 `type`: `DEPOSIT_MATURING_SOON`, `DEPOSIT_MATURED`, `INSTALLMENT_DUE_SOON`, `INSTALLMENT_OVERDUE`, `LOAN_PAID_OFF`,
 `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `BILL_DUE_SOON`, `BILL_OVERDUE`, `BILL_PAYMENT_FAILED`, `DAILY_REMINDER` (nhắc ghi
 chép khi cả ngày chưa ghi gì, theo giờ người dùng chọn), `SAVING_GOAL_MILESTONE`. Dùng `referenceType` + `referenceId`
 để điều hướng khi bấm thông báo (ví dụ mở hoá đơn, mục tiêu, khoản vay).
 
-> **Lưu ý cho KMP**: backend hiện gửi push qua **Expo Push API** và `POST /notifications/devices` chỉ nhận token dạng
-> `ExponentPushToken[…]` (khác → `422 INVALID_PUSH_TOKEN`). App KMP thuần không có token Expo → xem mục 16. Trong lúc
-> chưa có push, app vẫn dùng đầy đủ danh sách thông báo (poll `unread-count` khi mở app / quay lại foreground).
+### 14.1 Push qua FCM cho app KMP
+
+1. Tạo dự án **Firebase**, thêm app Android (package name) và app iOS (bundle id); với iOS tải **APNs Authentication
+   Key** (.p8) lên Firebase (Project settings → Cloud Messaging). Backend bật FCM bằng `FCM_ENABLED=true` và file
+   service account (xem `backend/README.md`, `docs/DEPLOYMENT.md`).
+2. App lấy **FCM registration token**: Android `FirebaseMessaging.getInstance().token`; iOS dùng Firebase iOS SDK
+   (`Messaging.messaging().token`) sau khi xin quyền thông báo và đăng ký APNs. Trong KMP, đặt hai cách lấy token này
+   sau một `expect/actual`.
+3. Sau khi đăng nhập: `POST /notifications/devices` `{"token":"<FCM token>","provider":"FCM","platform":"android"|"ios",
+   "deviceName":"…"}` → `201 {token, provider:"FCM", …}`. Gọi lại khi SDK báo token mới (`onNewToken` /
+   `messaging:didReceiveRegistrationToken`); gọi lại với token cũ là vô hại. Khi đăng xuất: `DELETE
+   /notifications/devices/{token}`.
+4. Tin nhắn FCM có `notification` (`title`, `body` – hệ điều hành tự hiển thị khi app ở nền) và `data` (chuỗi):
+   `notificationId`, `type`, `referenceType`, `referenceId` – dùng để mở đúng màn hình khi người dùng bấm.
+   Android gửi với kênh `channel_id = "default"` và mức ưu tiên cao: **tạo notification channel id `default`** khi khởi
+   động app (Android 8+); iOS có `aps.sound = "default"`.
+5. Token bị FCM báo `UNREGISTERED` (gỡ app) được backend tự xoá. Giờ yên lặng và loại bị tắt trong cài đặt áp dụng
+   như mọi kênh. Khi app đang mở (foreground), FCM không tự hiện thông báo: app tự hiển thị hoặc làm mới danh sách và
+   `unread-count`.
 
 ## 15. Gợi ý triển khai phía KMP
 
@@ -547,7 +563,7 @@ module backend và các mục 4–14 của tài liệu này.
 
 | Việc | Vì sao | Mức |
 |---|---|---|
-| Adapter push **FCM** (Android) và **APNs/FCM** (iOS); `POST /notifications/devices` nhận thêm loại token | Hiện chỉ có Expo Push; token Expo chỉ app Expo/React Native lấy được. Backend đã có port `NotificationSender` nên chỉ cần thêm adapter | Cần trước khi làm push |
+| ~~Adapter push FCM~~ | **Đã có** (mục 14.1): bật bằng `FCM_ENABLED=true` + file service account Firebase | – |
 | **Sign in with Apple** (`POST /auth/apple`) | App Store (guideline 4.8) thường yêu cầu khi app iOS có đăng nhập Google | Cần trước khi phát hành iOS nếu giữ đăng nhập Google |
 | Khai báo client id Google của app Android/iOS vào `GOOGLE_CLIENT_IDS` | Để `/auth/google` chấp nhận ID token của app | Cấu hình |
 | CORS | Không cần cho app native | – |

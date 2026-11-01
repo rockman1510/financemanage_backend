@@ -4,6 +4,7 @@ import com.financemanage.notification.application.NotificationSender;
 import com.financemanage.notification.domain.Notification;
 import com.financemanage.notification.domain.PushDevice;
 import com.financemanage.notification.domain.PushDeviceRepository;
+import com.financemanage.notification.domain.PushProvider;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,7 +45,7 @@ class ExpoPushNotificationSender implements NotificationSender {
 
     @Override
     public void send(Notification notification) {
-        List<PushDevice> targets = devices.findByOwnerId(notification.getOwnerId());
+        List<PushDevice> targets = devices.findByOwnerIdAndProvider(notification.getOwnerId(), PushProvider.EXPO);
         for (int from = 0; from < targets.size(); from += MAX_BATCH) {
             sendBatch(notification, targets.subList(from, Math.min(from + MAX_BATCH, targets.size())));
         }

@@ -37,7 +37,8 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | `app.currency.refresh-cron` | `0 0 6 * * *` | Job lấy tỷ giá từ các `ExchangeRateProvider` (không làm gì khi chưa có provider) |
 | `app.budget.warning-percent` | `80` | Mức % ngân sách phát cảnh báo (100% luôn cảnh báo) |
 | `app.bill.reminder-cron` | `0 20 0 * * *` | Job nhắc hoá đơn sắp đến hạn / quá hạn |
-| `EXPO_PUSH_ENABLED`, `EXPO_ACCESS_TOKEN` (`app.notification.expo.*`) | `true`, trống | Gửi push qua Expo Push API; access token chỉ cần khi bật "enhanced push security" trong dự án Expo |
+| `EXPO_PUSH_ENABLED`, `EXPO_ACCESS_TOKEN` (`app.notification.expo.*`) | `true`, trống | Gửi push qua Expo Push API tới thiết bị có token Expo (app Expo); access token chỉ cần khi bật "enhanced push security" trong dự án Expo |
+| `FCM_ENABLED`, `FCM_CREDENTIALS_FILE` (`app.notification.fcm.*`) | `false`, trống | Gửi push qua Firebase Cloud Messaging (HTTP v1) tới thiết bị có token FCM (app KMP: Android, iOS qua APNs). Cần file khoá service account của dự án Firebase (Project settings → Service accounts → Generate new private key); thiếu hoặc sai file thì app dừng khi khởi động. Có thể truyền nội dung file qua `app.notification.fcm.credentials-json` |
 | `app.saving.auto-contribution-cron` | `0 40 0 * * *` | Job trích tiền tự động vào mục tiêu tiết kiệm |
 | `app.investment.price-refresh-cron` (`INVESTMENT_PRICE_CRON`) | `-` (tắt) | Job lấy giá qua `PriceProvider` (mặc định không có nguồn giá: nhập tay) |
 | `app.notification.daily-reminder-cron` | `0 0 * * * *` | Job nhắc ghi chép (mỗi giờ, theo giờ nhắc + múi giờ của từng người) |
@@ -71,8 +72,9 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 
 - **Cách tính lãi mới**: implement `InterestCalculator`, thêm giá trị vào `InterestCalculationMethod`, khai báo bean.
 - **Phương thức trả nợ mới**: kế thừa `MonthlyScheduleGenerator` (hoặc implement `RepaymentScheduleGenerator`).
-- **Kênh thông báo mới** (gửi FCM/APNs trực tiếp, email, Zalo…): implement `NotificationSender`. Push qua Expo đã có
-  (`ExpoPushNotificationSender`).
+- **Kênh thông báo mới** (email, Zalo…): implement `NotificationSender`. Push đã có qua Expo
+  (`ExpoPushNotificationSender`) và FCM (`FcmPushNotificationSender`); mỗi adapter chỉ gửi tới thiết bị có `provider`
+  của nó.
 - **Nhà cung cấp email khác** (API HTTP thay cho SMTP): implement `EmailSender`.
 - **Nguồn tỷ giá tự động** (bảng tỷ giá ngân hàng…): implement `ExchangeRateProvider`, khai báo bean.
 - **Lưu ảnh hoá đơn lên object storage** (S3, R2…): implement `AttachmentStorage` thay cho bản lưu đĩa local.
