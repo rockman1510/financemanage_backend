@@ -441,7 +441,29 @@ req POST "/bills/$BILL/skip"
 check "Bỏ qua một kỳ" "$STATUS|$(j .status)" "200|SKIPPED"
 
 # =====================================================================================
-section "14. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
+section "14. Thông báo: cảnh báo ngân sách, cài đặt, thiết bị push"
+for _ in $(seq 1 10); do req GET /notifications; [[ "$(j '[.[] | select(.type=="BUDGET_WARNING")] | length')" == "1" ]] && break; sleep 1; done
+check "Chi 85% ngân sách tạo thông báo cảnh báo (một lần)" "$(j '[.[] | select(.type=="BUDGET_WARNING")] | length')" "1"
+req GET /notifications/preferences
+check "Cài đặt mặc định: nhắc ghi chép lúc 20:00" "$(j '"\(.dailyReminderEnabled)|\(.dailyReminderTime)"')" "true|20:00:00"
+req PUT /notifications/preferences '{"disabledTypes":["BILL_DUE_SOON"],"dailyReminderTime":"21:00","quietStart":"22:00","quietEnd":"07:00"}'
+check "Lưu cài đặt" "$(j '"\(.disabledTypes[0])|\(.dailyReminderTime)|\(.quietEnd)"')" "BILL_DUE_SOON|21:00:00|07:00:00"
+req PUT /notifications/preferences '{"quietStart":"22:00"}'
+check "Khung giờ yên lặng phải có đủ 2 đầu" "$STATUS|$(j .code)" "422|INVALID_QUIET_HOURS"
+PUSH_TOKEN="ExponentPushToken[test$RUN_ID]"
+req POST /notifications/devices "{\"token\":\"$PUSH_TOKEN\",\"platform\":\"android\",\"deviceName\":\"Pixel\"}"
+check_status "Đăng ký thiết bị nhận push" 201
+req POST /notifications/devices '{"token":"abc"}'
+check "Token không đúng định dạng Expo" "$STATUS|$(j .code)" "422|INVALID_PUSH_TOKEN"
+req POST /notifications/read-all
+req GET /notifications/unread-count
+check "Đánh dấu tất cả đã đọc" "$(j .count)" "0"
+ENCODED_TOKEN=${PUSH_TOKEN//\[/%5B}; ENCODED_TOKEN=${ENCODED_TOKEN//\]/%5D}   # curl would read [ ] as a pattern
+req DELETE "/notifications/devices/$ENCODED_TOKEN"
+check_status "Huỷ đăng ký thiết bị" 204
+
+# =====================================================================================
+section "15. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
 ACC_EMAIL="account$RUN_ID@example.com"
 TOKEN=""
 req POST /auth/register "{\"email\":\"$ACC_EMAIL\",\"password\":\"secret123\",\"fullName\":\"Tài khoản Test\",\"deviceName\":\"Điện thoại\"}"
@@ -522,7 +544,7 @@ for _ in $(seq 1 10); do req GET "/wallets?includeArchived=true"; [[ "$(j length
 check "Dữ liệu ở các module khác cũng bị xoá (bất đồng bộ)" "$(j length)" "0"
 
 # =====================================================================================
-section "15. Job đáo hạn/tái tục & thông báo"
+section "16. Job đáo hạn/tái tục & thông báo"
 if [[ "$RUN_JOB_TESTS" != "1" ]]; then
   echo "  (bỏ qua – chạy app với cron nhanh và đặt RUN_JOB_TESTS=1, xem docs/API_TEST_GUIDE.md)"
 else
