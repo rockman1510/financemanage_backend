@@ -17,6 +17,7 @@ import com.financemanage.notification.domain.Notification;
 import com.financemanage.notification.domain.NotificationType;
 import com.financemanage.notification.domain.PushDevice;
 import com.financemanage.notification.domain.PushDeviceRepository;
+import com.financemanage.notification.domain.PushProvider;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -31,9 +32,11 @@ import org.springframework.web.client.RestClient;
 class ExpoPushNotificationSenderTest {
 
     private static final UUID OWNER = UUID.randomUUID();
-    private static final PushDevice PHONE = new PushDevice("ExponentPushToken[aaaaaaaaaaaa]", OWNER, "ios", null,
+    private static final PushDevice PHONE = new PushDevice("ExponentPushToken[aaaaaaaaaaaa]", OWNER, PushProvider.EXPO,
+            "ios", null,
             Instant.now());
-    private static final PushDevice OLD_PHONE = new PushDevice("ExponentPushToken[bbbbbbbbbbbb]", OWNER, "android",
+    private static final PushDevice OLD_PHONE = new PushDevice("ExponentPushToken[bbbbbbbbbbbb]", OWNER,
+            PushProvider.EXPO, "android",
             null, Instant.now());
 
     private final PushDeviceRepository devices = mock(PushDeviceRepository.class);
@@ -45,7 +48,7 @@ class ExpoPushNotificationSenderTest {
         RestClient.Builder builder = RestClient.builder().baseUrl("https://exp.host");
         server = MockRestServiceServer.bindTo(builder).build();
         sender = new ExpoPushNotificationSender(builder.build(), devices);
-        when(devices.findByOwnerId(OWNER)).thenReturn(List.of(PHONE, OLD_PHONE));
+        when(devices.findByOwnerIdAndProvider(OWNER, PushProvider.EXPO)).thenReturn(List.of(PHONE, OLD_PHONE));
     }
 
     @Test

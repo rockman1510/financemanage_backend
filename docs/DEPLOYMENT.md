@@ -55,6 +55,13 @@ nano .env
   - mất `BACKUP_PASSPHRASE` thì không giải mã được bản backup.
 - SMTP (`SMTP_HOST`…): không có thì email chỉ ghi vào log, người dùng không nhận được mã.
 - `GOOGLE_CLIENT_IDS`: client id OAuth của app mobile, để bật đăng nhập Google.
+- Push cho app KMP (FCM):
+  - Firebase console → Project settings → Service accounts → **Generate new private key**.
+  - Chép file vào `secrets/firebase-service-account.json` cạnh `docker-compose.prod.yml`, rồi `chmod 600`. Thư mục
+    `secrets/` đã nằm trong `.gitignore`.
+  - Đặt `FCM_ENABLED=true`.
+  - File sai hoặc thiếu thì backend dừng ngay khi khởi động, xem `docker compose logs backend`.
+  - Push tới iOS cần tải APNs Authentication Key (.p8) lên Firebase (Project settings → Cloud Messaging).
 - Backup ra ngoài:
   - Điền `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
   - Với R2, B2, Spaces thì điền thêm `S3_ENDPOINT`, ví dụ R2: `https://<account-id>.r2.cloudflarestorage.com`.

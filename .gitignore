@@ -23,3 +23,6 @@ Desktop.ini
 *.dump
 *.dump.enc
 backups/
+
+# Service-account keys mounted into the production containers (docker-compose.prod.yml: ./secrets)
+secrets/

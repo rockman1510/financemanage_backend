@@ -7,6 +7,7 @@ import com.financemanage.notification.domain.Notification;
 import com.financemanage.notification.domain.NotificationPreferences;
 import com.financemanage.notification.domain.NotificationType;
 import com.financemanage.notification.domain.PushDevice;
+import com.financemanage.notification.domain.PushProvider;
 import com.financemanage.shared.security.CurrentUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -53,15 +54,20 @@ class NotificationController {
         }
     }
 
-    /** {@code platform}: "ios", "android"…; {@code deviceName} labels it in the list. */
-    record RegisterDeviceRequest(@NotBlank @Size(max = 200) String token, @Size(max = 10) String platform,
-                                 @Size(max = 100) String deviceName) {
+    /**
+     * {@code provider}: {@code EXPO} or {@code FCM}; omitted, an {@code ExponentPushToken[…]} is Expo and any other
+     * token FCM. {@code platform}: "ios", "android"…; {@code deviceName} labels it in the list.
+     */
+    record RegisterDeviceRequest(@NotBlank @Size(max = 500) String token, PushProvider provider,
+                                 @Size(max = 10) String platform, @Size(max = 100) String deviceName) {
     }
 
-    record DeviceResponse(String token, String platform, String deviceName, Instant registeredAt) {
+    record DeviceResponse(String token, PushProvider provider, String platform, String deviceName,
+                          Instant registeredAt) {
 
         static DeviceResponse from(PushDevice d) {
-            return new DeviceResponse(d.getToken(), d.getPlatform(), d.getDeviceName(), d.getRegisteredAt());
+            return new DeviceResponse(d.getToken(), d.getProvider(), d.getPlatform(), d.getDeviceName(),
+                    d.getRegisteredAt());
         }
     }
 
@@ -127,8 +133,8 @@ class NotificationController {
     @PostMapping("/devices")
     @ResponseStatus(HttpStatus.CREATED)
     DeviceResponse register(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody RegisterDeviceRequest request) {
-        return DeviceResponse.from(devices.register(CurrentUser.id(jwt), request.token(), request.platform(),
-                request.deviceName()));
+        return DeviceResponse.from(devices.register(CurrentUser.id(jwt), request.token(), request.provider(),
+                request.platform(), request.deviceName()));
     }
 
     @DeleteMapping("/devices/{token}")
