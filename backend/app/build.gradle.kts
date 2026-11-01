@@ -14,6 +14,7 @@ dependencies {
     implementation(project(":modules:budget"))
     implementation(project(":modules:bill"))
     implementation(project(":modules:saving"))
+    implementation(project(":modules:investment"))
 
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-flyway")

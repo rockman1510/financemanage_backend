@@ -38,6 +38,7 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | `app.bill.reminder-cron` | `0 20 0 * * *` | Job nhắc hoá đơn sắp đến hạn / quá hạn |
 | `EXPO_PUSH_ENABLED`, `EXPO_ACCESS_TOKEN` (`app.notification.expo.*`) | `true`, trống | Gửi push qua Expo Push API; access token chỉ cần khi bật "enhanced push security" trong dự án Expo |
 | `app.saving.auto-contribution-cron` | `0 40 0 * * *` | Job trích tiền tự động vào mục tiêu tiết kiệm |
+| `app.investment.price-refresh-cron` (`INVESTMENT_PRICE_CRON`) | `-` (tắt) | Job lấy giá qua `PriceProvider` (mặc định không có nguồn giá: nhập tay) |
 | `app.notification.daily-reminder-cron` | `0 0 * * * *` | Job nhắc ghi chép (mỗi giờ, theo giờ nhắc + múi giờ của từng người) |
 | `app.reporting.upcoming-days`, `projection-months` | `30`, `12` | Dashboard |
 | `spring.cache.type` | `simple` | Đổi sang `redis` (thêm `spring-boot-starter-data-redis`) khi chạy nhiều instance |
@@ -57,6 +58,7 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | Ngân sách | `GET/POST /budgets` (`?date=` để xem kỳ khác), `GET/PATCH/DELETE /budgets/{id}` |
 | Hoá đơn | `GET/POST /bills`, `GET /bills/upcoming?days=30`, `GET/PATCH/DELETE /bills/{id}`, `POST /bills/{id}/pay` (202), `POST /bills/{id}/skip` |
 | Tiết kiệm | `GET/POST /saving-goals`, `GET/PATCH/DELETE /saving-goals/{id}`, `POST /saving-goals/{id}/deposits` (202), `POST /saving-goals/{id}/withdrawals` (202), `PUT/DELETE /saving-goals/{id}/auto-contribution`, `PUT/DELETE /saving-goals/{id}/round-up` |
+| Đầu tư | `GET/POST /investments`, `GET /investments/portfolio?currency=`, `GET/PATCH/DELETE /investments/{id}`, `POST /investments/{id}/buys`, `POST /investments/{id}/sells`, `POST /investments/{id}/incomes`, `PUT /investments/{id}/price` |
 | Tỷ giá | `GET/POST /exchange-rates`, `DELETE /exchange-rates/{id}`, `GET /exchange-rates/convert` |
 | Tiền gửi | `GET/POST /deposits` (`fromWalletId` tuỳ chọn), `POST /deposits/{id}/settle` (`toWalletId` tuỳ chọn), `POST /deposits/preview`, `GET/PATCH/DELETE /deposits/{id}`, `GET /deposits/{id}/settlement-quote` |
 | Vay nợ | `GET/POST /loans`, `POST /loans/preview-schedule`, `GET/PATCH/DELETE /loans/{id}`, `POST /loans/{id}/repayments` (header `Idempotency-Key`), `POST /loans/{id}/prepayments`, `POST /loans/{id}/rate-changes` |

@@ -25,7 +25,7 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
-  bạn thấy kết quả ngay. Chỉ cần khi test mục 14 (job).
+  bạn thấy kết quả ngay. Chỉ cần khi test mục 15 (job).
 - Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
   giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
@@ -39,8 +39,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 210 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 17 (job) được bỏ
-qua (còn 201 kiểm tra). Phần mã gửi qua email (mục 16) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 225 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 18 (job) được bỏ
+qua (còn 216 kiểm tra). Phần mã gửi qua email (mục 17) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -416,7 +416,44 @@ Quy tắc:
 
 ---
 
-## 13. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
+## 13. Đầu tư: tài sản, mua/bán, cổ tức, danh mục
+
+Dùng **một user mới** có ví `$CASH` (50.000.000 VND).
+
+Quy tắc:
+
+- Tài sản có loại (`STOCK`, `FUND`, `GOLD`, `CRYPTO`, `BOND`, `REAL_ESTATE`, `OTHER`), mã (tuỳ chọn, viết hoa) và
+  tiền tệ (mặc định VND, không đổi được). Số lượng được lẻ tới 8 chữ số (vàng 0,5 lượng, 0,01 BTC).
+- **Giá vốn bình quân**: mua cộng `số lượng × giá + phí` vào giá vốn; bán trừ giá vốn bình quân của phần bán, phần còn
+  lại của tiền bán (đã trừ phí) là **lãi/lỗ đã thực hiện**. Không bán quá số đang nắm giữ, phí không lớn hơn tiền bán.
+- **Cổ tức/coupon/tiền thuê** (`incomes`) là lãi đã thực hiện. Có `categoryId` (danh mục thu, vd. "Tiền lãi") thì sổ
+  thu chi ghi là **khoản thu**; không có thì là `EXTERNAL_IN`.
+- `walletId` **tuỳ chọn**: có ví thì tiền mua/bán đi qua sổ thu chi (`EXTERNAL_OUT`/`EXTERNAL_IN`, nguồn
+  `INVESTMENT`, không tính là chi/thu), `cashStatus` `PENDING` → `RECORDED`. Sổ thu chi từ chối (ví lưu trữ…) →
+  `FAILED`, còn giao dịch tài sản vẫn giữ (đã xảy ra ở công ty chứng khoán). Không có ví → `NONE` (chỉ theo dõi).
+  Ví phải cùng tiền tệ với tài sản.
+- **Giá thị trường** nhập tay (`PUT .../price`) hoặc lấy theo giá của lần mua/bán gần nhất; giá cũ hơn giá đã có bị
+  từ chối (`STALE_PRICE`). Chưa có giá thì giá trị = giá vốn (`priced=false`). Nguồn giá tự động cắm vào qua port
+  `PriceProvider` và job `app.investment.price-refresh-cron` (mặc định tắt).
+- **Danh mục** (`/investments/portfolio?currency=VND`): tổng giá trị, giá vốn, lãi chưa thực hiện (và %), lãi đã thực
+  hiện, tổng lợi nhuận, phân bổ theo loại tài sản; quy đổi bằng tỷ giá (mục 8), thiếu tỷ giá → `422
+  EXCHANGE_RATE_MISSING`.
+- Xoá tài sản chỉ ngừng theo dõi; các giao dịch đã ghi ở ví vẫn giữ.
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| I1 | Tạo tài sản | `curl -s -X POST $API/investments -H "$AUTH" -H "$JSON" -d '{"name":"FPT","symbol":"fpt","type":"STOCK"}' \| jq` | `201`, `symbol=FPT`, `currency=VND`, `quantity=0` |
+| I2 | Mua 200 cp | `curl -s -X POST $API/investments/<id>/buys -H "$AUTH" -H "$JSON" -d "{\"quantity\":200,\"price\":100000,\"fee\":30000,\"walletId\":\"$CASH\"}" \| jq` | `201`, `cash=20030000`, `cashStatus=PENDING`; sau đó `GET` tài sản: `averageCost=100150`, `trades[0].cashStatus=RECORDED`; ví còn 29.970.000 |
+| I3 | Bán 50 cp | `POST .../sells` với `{"quantity":50,"price":120000,"walletId":"$CASH"}` | `201`, `realized=992500` (6tr − 50 × 100.150); ví +6tr |
+| I4 | Bán quá số lượng | `POST .../sells` với `{"quantity":500,"price":1}` | `422 INSUFFICIENT_QUANTITY` |
+| I5 | Cổ tức | `POST .../incomes` với `{"amount":300000,"walletId":"$CASH","categoryId":"<id danh mục INTEREST>"}` | `201`; `GET $API/transactions/summary`: `income=300000`, `expense=0` (mua/bán không tính) |
+| I6 | Cập nhật giá | `curl -s -X PUT $API/investments/<id>/price -H "$AUTH" -H "$JSON" -d '{"price":110000}' \| jq` | `quantity=150`, `marketValue=16500000`, `unrealized=1477500`, `realized=1292500`, `totalReturn=2770000` |
+| I7 | Danh mục | `curl -s "$API/investments/portfolio?currency=VND" -H "$AUTH" \| jq` | `marketValue=16500000`, `totalReturn=2770000`, `allocation=[{type:STOCK, percent:100}]` |
+| I8 | Chỉ theo dõi | Tạo `{"name":"Bitcoin","symbol":"BTC","type":"CRYPTO","currency":"USD"}`, mua `{"quantity":0.01,"price":60000}` không có ví | `cash=600`, `cashStatus=NONE`; danh mục VND chưa có tỷ giá USD → `422 EXCHANGE_RATE_MISSING` |
+
+---
+
+## 14. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
 
 Dùng **một user mới**, đăng ký kèm `deviceName`. Lấy mã trong email:
 
@@ -463,7 +500,7 @@ Quy tắc:
 
 ---
 
-## 14. Job đáo hạn, tái tục và thông báo
+## 15. Job đáo hạn, tái tục và thông báo
 
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
@@ -507,7 +544,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 
 ---
 
-## 15. Bảng đối chiếu quy tắc nghiệp vụ
+## 16. Bảng đối chiếu quy tắc nghiệp vụ
 
 | Quy tắc | Kiểm tra ở |
 |---|---|
@@ -516,7 +553,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi tích luỹ dừng ở ngày đáo hạn | D1 |
 | Rút trước hạn tính lãi theo lãi suất không kỳ hạn, báo rõ số lãi bị mất | D4 |
 | Không tất toán 2 lần; không tất toán trước ngày gửi | D6, D9 |
-| Tái tục gốc / gốc + lãi / không tái tục | Mục 14 |
+| Tái tục gốc / gốc + lãi / không tái tục | Mục 15 |
 | Lịch trả nợ đúng cho 4 phương thức, tổng gốc luôn đúng bằng số tiền vay | 5.1 |
 | Thanh toán trừ lãi trước gốc, kỳ cũ trước | L2, L8 |
 | Gửi lại cùng Idempotency-Key không trừ tiền 2 lần | L3 |
@@ -543,6 +580,9 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Xoá tài khoản xoá dữ liệu ở mọi module | U15 |
 | Ngân sách tính cả danh mục con, quy đổi tiền tệ, gợi ý mức chi mỗi ngày | B1–B4 |
 | Thanh toán hoá đơn ghi khoản chi qua sổ thu chi (saga), kỳ sau không trôi ngày | H1–H4 |
-| Thông báo chống trùng, tôn trọng loại bị tắt và giờ yên lặng | N1, N2, mục 14 |
+| Thông báo chống trùng, tôn trọng loại bị tắt và giờ yên lặng | N1, N2, mục 15 |
 | Nạp/rút mục tiêu qua sổ thu chi (không tính là thu chi), hoàn lại khi bị từ chối, làm tròn, trích tự động, mốc 50%/100% | S1–S6 |
 | Sổ tiết kiệm trừ tiền ví khi mở, cộng vào ví khi tất toán | S7 |
+| Giá vốn bình quân gồm phí; bán tính lãi đã thực hiện trên giá vốn bình quân; không bán quá số nắm giữ | I2–I4 |
+| Tiền mua/bán qua ví không tính là thu chi; cổ tức có danh mục là khoản thu | I2, I5 |
+| Lãi chưa thực hiện theo giá mới nhất; danh mục quy đổi một tiền tệ, phân bổ theo loại | I6–I8 |

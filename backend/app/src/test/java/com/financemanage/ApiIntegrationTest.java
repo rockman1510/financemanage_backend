@@ -820,6 +820,66 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("CURRENCY_MISMATCH"));
     }
 
+    @Test
+    void investmentTradesMoveCashThroughTheLedger() throws Exception {
+        String cash = createWallet("Chứng khoán", "BANK_ACCOUNT", "VND", 50_000_000);
+        String asset = mvc.perform(auth(json(post("/api/v1/investments"),
+                        "{\"name\":\"FPT\",\"symbol\":\"fpt\",\"type\":\"STOCK\"}")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.symbol").value("FPT"))
+                .andExpect(jsonPath("$.currency").value("VND"))
+                .andReturn().getResponse().getContentAsString();
+        String assetId = JsonPath.read(asset, "$.id");
+
+        mvc.perform(auth(json(post("/api/v1/investments/" + assetId + "/buys"),
+                        "{\"quantity\":200,\"price\":100000,\"fee\":30000,\"walletId\":\"%s\"}".formatted(cash))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.cash").value(20_030_000))
+                .andExpect(jsonPath("$.cashStatus").value("PENDING"));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/investments/" + assetId)))
+                    .andExpect(jsonPath("$.trades[0].cashStatus").value("RECORDED"));
+            expectBalance(cash, 29_970_000);
+        });
+        mvc.perform(auth(json(post("/api/v1/investments/" + assetId + "/sells"),
+                        "{\"quantity\":50,\"price\":120000,\"walletId\":\"%s\"}".formatted(cash))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.realized").value(992_500)); // 6tr − 50 × 100 150
+        mvc.perform(auth(json(post("/api/v1/investments/" + assetId + "/sells"), "{\"quantity\":500,\"price\":1}")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("INSUFFICIENT_QUANTITY"));
+        String interest = categoryId(mvc.perform(auth(get("/api/v1/categories"))).andReturn().getResponse()
+                .getContentAsString(), "INTEREST");
+        mvc.perform(auth(json(post("/api/v1/investments/" + assetId + "/incomes"),
+                        "{\"amount\":300000,\"walletId\":\"%s\",\"categoryId\":\"%s\"}".formatted(cash, interest))))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(json(put("/api/v1/investments/" + assetId + "/price"), "{\"price\":110000}")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantity").value(150))
+                .andExpect(jsonPath("$.averageCost").value(100150))
+                .andExpect(jsonPath("$.marketValue").value(16_500_000))
+                .andExpect(jsonPath("$.unrealized").value(1_477_500))
+                .andExpect(jsonPath("$.realized").value(1_292_500));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/investments/" + assetId)))
+                    .andExpect(jsonPath("$.trades[?(@.cashStatus == 'RECORDED')]", hasSize(3)));
+            expectBalance(cash, 29_970_000 + 6_000_000 + 300_000);
+        });
+        // buys and sells are EXTERNAL movements; only the dividend booked in a category is income
+        mvc.perform(auth(get("/api/v1/transactions/summary")))
+                .andExpect(jsonPath("$[0].income").value(300_000))
+                .andExpect(jsonPath("$[0].expense").value(0));
+
+        mvc.perform(auth(get("/api/v1/investments/portfolio?currency=VND")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.marketValue").value(16_500_000))
+                .andExpect(jsonPath("$.totalReturn").value(2_770_000))
+                .andExpect(jsonPath("$.allocation[0].type").value("STOCK"))
+                .andExpect(jsonPath("$.allocation[0].percent").value(100));
+        mvc.perform(auth(delete("/api/v1/investments/" + assetId))).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/investments"))).andExpect(jsonPath("$", hasSize(0)));
+    }
+
     private String lastCode(String email) {
         String subject = mailbox.messagesTo(email).getFirst().subject();
         Matcher matcher = Pattern.compile("(\\d{6})").matcher(subject);
