@@ -15,40 +15,40 @@ final class ReportDtos {
     private ReportDtos() {
     }
 
-    record TotalsResponse(BigDecimal income, BigDecimal expense, BigDecimal net) {
+    record PeriodTotalsResponse(BigDecimal income, BigDecimal expense, BigDecimal net) {
 
-        static TotalsResponse from(ReportService.Totals t) {
-            return new TotalsResponse(amount(t.income()), amount(t.expense()), amount(t.net()));
+        static PeriodTotalsResponse from(ReportService.Totals t) {
+            return new PeriodTotalsResponse(amount(t.income()), amount(t.expense()), amount(t.net()));
         }
     }
 
     record SummaryResponse(LocalDate from, LocalDate to, String currency, BigDecimal income, BigDecimal expense,
                            BigDecimal net, BigDecimal savingsRate, LocalDate previousFrom, LocalDate previousTo,
-                           TotalsResponse previous, BigDecimal incomeChange, BigDecimal expenseChange) {
+                           PeriodTotalsResponse previous, BigDecimal incomeChange, BigDecimal expenseChange) {
 
         static SummaryResponse from(ReportService.Summary s) {
             return new SummaryResponse(s.period().from(), s.period().to(), s.currency(), amount(s.totals().income()),
                     amount(s.totals().expense()), amount(s.totals().net()), s.savingsRate(),
-                    s.previousPeriod().from(), s.previousPeriod().to(), TotalsResponse.from(s.previous()),
+                    s.previousPeriod().from(), s.previousPeriod().to(), PeriodTotalsResponse.from(s.previous()),
                     s.incomeChange(), s.expenseChange());
         }
     }
 
-    record CategoryResponse(UUID categoryId, String name, BigDecimal amount, BigDecimal percent,
-                            List<CategoryResponse> children) {
+    record CategoryTotalResponse(UUID categoryId, String name, BigDecimal amount, BigDecimal percent,
+                            List<CategoryTotalResponse> children) {
 
-        static CategoryResponse from(ReportService.CategoryTotal c) {
-            return new CategoryResponse(c.categoryId(), c.name(), ReportDtos.amount(c.amount()), c.percent(),
-                    c.children().stream().map(CategoryResponse::from).toList());
+        static CategoryTotalResponse from(ReportService.CategoryTotal c) {
+            return new CategoryTotalResponse(c.categoryId(), c.name(), ReportDtos.amount(c.amount()), c.percent(),
+                    c.children().stream().map(CategoryTotalResponse::from).toList());
         }
     }
 
     record CategoryReportResponse(LocalDate from, LocalDate to, String type, String currency, BigDecimal total,
-                                  List<CategoryResponse> categories) {
+                                  List<CategoryTotalResponse> categories) {
 
         static CategoryReportResponse from(ReportService.CategoryReport r) {
             return new CategoryReportResponse(r.period().from(), r.period().to(), r.type(), r.currency(),
-                    amount(r.total()), r.categories().stream().map(CategoryResponse::from).toList());
+                    amount(r.total()), r.categories().stream().map(CategoryTotalResponse::from).toList());
         }
     }
 

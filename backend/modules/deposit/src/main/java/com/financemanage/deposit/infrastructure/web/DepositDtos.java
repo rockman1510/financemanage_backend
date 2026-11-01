@@ -66,7 +66,7 @@ final class DepositDtos {
     record SettleDepositRequest(LocalDate date, UUID toWalletId) {
     }
 
-    record TransactionResponse(UUID id, DepositTransactionType type, BigDecimal amount, LocalDate occurredOn) {
+    record DepositTransactionResponse(UUID id, DepositTransactionType type, BigDecimal amount, LocalDate occurredOn) {
     }
 
     record DepositResponse(
@@ -75,7 +75,7 @@ final class DepositDtos {
             LocalDate openDate, LocalDate maturityDate, InterestPaymentMethod interestPaymentMethod,
             RolloverPolicy rolloverPolicy, InterestCalculationMethod calculationMethod, DepositStatus status,
             String note, LocalDate settledOn, BigDecimal settledAmount, BigDecimal accruedInterest,
-            BigDecimal expectedInterestAtMaturity, List<TransactionResponse> transactions, UUID fundingWalletId,
+            BigDecimal expectedInterestAtMaturity, List<DepositTransactionResponse> transactions, UUID fundingWalletId,
             WalletLinkStatus fundingStatus, UUID payoutWalletId, WalletLinkStatus payoutStatus) {
 
         static DepositResponse from(DepositView view) {
@@ -87,7 +87,8 @@ final class DepositDtos {
                     d.getNote(), d.getSettledOn(), plain(d.getSettledAmount()), plain(view.accruedInterest()),
                     plain(view.expectedInterestAtMaturity()),
                     d.getTransactions().stream()
-                            .map(t -> new TransactionResponse(t.id(), t.type(), plain(t.amount()), t.occurredOn()))
+                            .map(t -> new DepositTransactionResponse(t.id(), t.type(), plain(t.amount()),
+                                    t.occurredOn()))
                             .toList(), d.getFundingWalletId(), d.getFundingStatus(), d.getPayoutWalletId(),
                     d.getPayoutStatus());
         }
