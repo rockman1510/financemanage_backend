@@ -82,6 +82,24 @@ class ApiIntegrationTest {
         token = register(UUID.randomUUID() + "@example.com");
     }
 
+    /**
+     * Mobile clients are generated from the OpenAPI document: response records with the same simple name in two
+     * modules would be merged into one (wrong) schema, so each must keep its own name.
+     */
+    @Test
+    void openApiDescribesEveryResponseWithItsOwnSchema() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.components.schemas.CategoryReportResponse.properties.categories.items.$ref")
+                        .value("#/components/schemas/CategoryTotalResponse"))
+                .andExpect(jsonPath("$.components.schemas.CategoryTotalResponse.properties.amount").exists())
+                .andExpect(jsonPath("$.components.schemas.SummaryResponse.properties.previous.$ref")
+                        .value("#/components/schemas/PeriodTotalsResponse"))
+                .andExpect(jsonPath("$.components.schemas.DepositResponse.properties.transactions.items.$ref")
+                        .value("#/components/schemas/DepositTransactionResponse"))
+                .andExpect(jsonPath("$.components.schemas.TransactionResponse.properties.walletId").exists());
+    }
+
     @Test
     void rejectsUnauthenticatedRequests() throws Exception {
         mvc.perform(get("/api/v1/deposits")).andExpect(status().isUnauthorized());
