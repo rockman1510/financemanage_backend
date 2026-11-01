@@ -1,9 +1,19 @@
+# Gradle
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
-*.iml
+
+# IntelliJ / Eclipse / VS Code (Java extension)
 .idea/
+*.iml
 out/
+.classpath
+.project
+.settings/
+bin/
+.factorypath
+
+# Runtime output of a locally running backend: logs, heap dumps, receipt photos (data/attachments)
 *.log
-# receipt photos stored by a locally running backend
+*.hprof
 data/
