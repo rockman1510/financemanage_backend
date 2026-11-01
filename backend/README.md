@@ -41,6 +41,7 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | `app.investment.price-refresh-cron` (`INVESTMENT_PRICE_CRON`) | `-` (tắt) | Job lấy giá qua `PriceProvider` (mặc định không có nguồn giá: nhập tay) |
 | `app.notification.daily-reminder-cron` | `0 0 * * * *` | Job nhắc ghi chép (mỗi giờ, theo giờ nhắc + múi giờ của từng người) |
 | `app.reporting.upcoming-days`, `projection-months` | `30`, `12` | Dashboard |
+| `spring.cache.type` (`CACHE_TYPE`) | `simple` | `redis` để dùng chung cache giữa nhiều instance (cần `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`; bật `REDIS_HEALTH_ENABLED=true` để health kiểm tra Redis) |
 | `spring.cache.type` | `simple` | Đổi sang `redis` (thêm `spring-boot-starter-data-redis`) khi chạy nhiều instance |
 
 ## API chính (`/api/v1`)
@@ -62,7 +63,7 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | Tỷ giá | `GET/POST /exchange-rates`, `DELETE /exchange-rates/{id}`, `GET /exchange-rates/convert` |
 | Tiền gửi | `GET/POST /deposits` (`fromWalletId` tuỳ chọn), `POST /deposits/{id}/settle` (`toWalletId` tuỳ chọn), `POST /deposits/preview`, `GET/PATCH/DELETE /deposits/{id}`, `GET /deposits/{id}/settlement-quote` |
 | Vay nợ | `GET/POST /loans`, `POST /loans/preview-schedule`, `GET/PATCH/DELETE /loans/{id}`, `POST /loans/{id}/repayments` (header `Idempotency-Key`), `POST /loans/{id}/prepayments`, `POST /loans/{id}/rate-changes` |
-| Báo cáo | `GET /dashboard` |
+| Báo cáo | `GET /dashboard`, `GET /reports/summary`, `GET /reports/categories`, `GET /reports/cash-flow`, `GET /reports/net-worth`, `GET /reports/transactions.csv`, `POST /reports/rebuild` (tham số `from`, `to`, `currency`, `type`, `granularity`) |
 | Thông báo | `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/{id}/read`, `POST /notifications/read-all`, `GET/PUT /notifications/preferences`, `GET/POST /notifications/devices`, `DELETE /notifications/devices/{token}` |
 
 ## Mở rộng

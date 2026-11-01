@@ -20,6 +20,7 @@ import com.financemanage.identity.application.GoogleTokenVerifier.GoogleIdentity
 import com.financemanage.identity.domain.Totp;
 import com.financemanage.identity.infrastructure.email.DevMailbox;
 import com.jayway.jsonpath.JsonPath;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -878,6 +879,78 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.allocation[0].percent").value(100));
         mvc.perform(auth(delete("/api/v1/investments/" + assetId))).andExpect(status().isNoContent());
         mvc.perform(auth(get("/api/v1/investments"))).andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void reportsFollowTheLedgerThroughTheirReadModel() throws Exception {
+        String cash = createWallet("Tiền mặt", "CASH", "VND", 10_000_000);
+        String categories = mvc.perform(auth(get("/api/v1/categories"))).andReturn().getResponse()
+                .getContentAsString();
+        String salary = categoryId(categories, "SALARY");
+        String food = categoryId(categories, "FOOD");
+        String coffee = categoryId(categories, "FOOD_COFFEE");
+        String transport = categoryId(categories, "TRANSPORT");
+        LocalDate lastMonth = today.minusMonths(1).withDayOfMonth(1);
+        String body = "{\"walletId\":\"%s\",\"categoryId\":\"%s\",\"amount\":%d,\"occurredOn\":\"%s\"}";
+        mvc.perform(auth(json(post("/api/v1/transactions"), body.formatted(cash, salary, 20_000_000, today))))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(json(post("/api/v1/transactions"), body.formatted(cash, food, 3_000_000, today))))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(json(post("/api/v1/transactions"), body.formatted(cash, coffee, 1_000_000, today))))
+                .andExpect(status().isCreated());
+        String taxi = JsonPath.read(mvc.perform(auth(json(post("/api/v1/transactions"),
+                        body.formatted(cash, transport, 500_000, today)))).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        mvc.perform(auth(json(post("/api/v1/transactions"), body.formatted(cash, food, 2_000_000, lastMonth))))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(delete("/api/v1/transactions/" + taxi))).andExpect(status().isNoContent());
+
+        // the read model follows the ledger's events asynchronously
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> mvc.perform(auth(get("/api/v1/reports/summary")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.income").value(20_000_000))
+                .andExpect(jsonPath("$.expense").value(4_000_000))
+                .andExpect(jsonPath("$.net").value(16_000_000))
+                .andExpect(jsonPath("$.savingsRate").value(80))
+                .andExpect(jsonPath("$.previous.expense").value(2_000_000))
+                .andExpect(jsonPath("$.expenseChange").value(100)));
+        mvc.perform(auth(get("/api/v1/reports/categories")))
+                .andExpect(jsonPath("$.total").value(4_000_000))
+                .andExpect(jsonPath("$.categories", hasSize(1)))
+                .andExpect(jsonPath("$.categories[0].name").value("Ăn uống"))
+                .andExpect(jsonPath("$.categories[0].percent").value(100))
+                .andExpect(jsonPath("$.categories[0].children[0].name").value("Cà phê"))
+                .andExpect(jsonPath("$.categories[0].children[0].percent").value(25));
+
+        String goal = JsonPath.read(mvc.perform(auth(json(post("/api/v1/saving-goals"),
+                        "{\"name\":\"Quỹ\",\"target\":5000000}"))).andReturn().getResponse().getContentAsString(),
+                "$.id");
+        mvc.perform(auth(json(post("/api/v1/saving-goals/" + goal + "/deposits"),
+                "{\"amount\":2000000,\"walletId\":\"%s\"}".formatted(cash)))).andExpect(status().isAccepted());
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> mvc.perform(auth(get(
+                        "/api/v1/reports/cash-flow?from=" + lastMonth + "&to=" + today)))
+                .andExpect(jsonPath("$.points", hasSize(2)))
+                .andExpect(jsonPath("$.points[0].expense").value(2_000_000))
+                .andExpect(jsonPath("$.points[1].externalOut").value(2_000_000))
+                .andExpect(jsonPath("$.points[1].cashFlow").value(14_000_000)));
+        // wallet 10tr + 20tr − 3tr − 1tr − 2tr (last month) − 2tr saved, plus the goal's 2tr
+        mvc.perform(auth(get("/api/v1/reports/net-worth")))
+                .andExpect(jsonPath("$.netWorth").value(24_000_000))
+                .andExpect(jsonPath("$.groups[0].kind").value("WALLET"))
+                .andExpect(jsonPath("$.groups[0].total").value(22_000_000))
+                .andExpect(jsonPath("$.groups[1].kind").value("SAVING"));
+        String csv = mvc.perform(auth(get("/api/v1/reports/transactions.csv?from=" + lastMonth + "&to=" + today)))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("attachment")))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(csv.lines()).hasSize(6) // header, 5 live transactions (the taxi was deleted)
+                .anyMatch(l -> l.startsWith(today + ",EXPENSE,Tiền mặt,Cà phê,1000000,VND"))
+                .anyMatch(l -> l.contains(",EXTERNAL_OUT,") && l.contains(",SAVING,"));
+        mvc.perform(auth(get("/api/v1/reports/summary?from=" + today + "&to=" + lastMonth)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.code").value("INVALID_PERIOD"));
+        mvc.perform(auth(post("/api/v1/reports/rebuild"))).andExpect(status().isNoContent());
+        mvc.perform(auth(get("/api/v1/reports/summary"))).andExpect(jsonPath("$.expense").value(4_000_000));
     }
 
     private String lastCode(String email) {

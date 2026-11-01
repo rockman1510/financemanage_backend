@@ -1,5 +1,6 @@
 package com.financemanage.shared.domain;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Currency;
@@ -9,7 +10,7 @@ import java.util.Objects;
  * Immutable monetary amount. All arithmetic is done with {@link BigDecimal} at {@link #CALC_SCALE}
  * decimals; {@link #rounded()} rounds to the currency's minor unit (0 for VND, 2 for USD).
  */
-public record Money(BigDecimal amount, Currency currency) implements Comparable<Money> {
+public record Money(BigDecimal amount, Currency currency) implements Comparable<Money>, Serializable {
 
     public static final int CALC_SCALE = 4;
     public static final RoundingMode ROUNDING = RoundingMode.HALF_UP;

@@ -21,4 +21,7 @@ public interface LedgerQueryApi {
      * parent category includes its sub-categories; {@code walletId} may be null (every wallet).
      */
     List<Money> expenseTotals(UUID ownerId, Set<UUID> categoryIds, UUID walletId, LocalDate from, LocalDate to);
+
+    /** Every transaction of the owner as event snapshots, to (re)build a read model; newest first. */
+    List<LedgerEvents.TransactionSnapshot> transactions(UUID ownerId);
 }

@@ -55,7 +55,7 @@ backend/
 │  ├─ deposit/           Tiền gửi: domain thuần Java + Strategy tính lãi, JPA adapter, REST, job đáo hạn
 │  ├─ loan/              Vay nợ: Strategy lịch trả nợ, trả nợ idempotent, trả trước hạn, lãi thả nổi, job nhắc nợ
 │  ├─ notification/      Event → thông báo trong app + push Expo, cài đặt, nhắc ghi chép hằng ngày, chống trùng
-│  └─ reporting/         Dashboard / tài sản ròng / dòng tiền (CQRS-lite, cache + evict theo event)
+│  └─ reporting/         Dashboard, báo cáo thu chi/danh mục/dòng tiền, tài sản ròng, CSV (read model từ event, cache bộ nhớ/Redis)
 └─ app/                  Spring Boot application, cấu hình, Flyway, integration test
 ```
 

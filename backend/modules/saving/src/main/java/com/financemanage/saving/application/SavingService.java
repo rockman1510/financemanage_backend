@@ -173,6 +173,7 @@ public class SavingService implements SavingQueryApi {
         goals.findByMovement(movementId).ifPresent(goal -> {
             goal.movementFailed(movementId, reason);
             goals.save(goal);
+            events.publishEvent(new SavingGoalChanged(goal.getId(), goal.getOwnerId()));
         });
     }
 
