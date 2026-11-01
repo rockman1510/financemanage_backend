@@ -41,6 +41,10 @@ public class Deposit {
     private Money settledAmount;
     private final List<DepositTransaction> transactions;
     private final Long version;
+    private UUID fundingWalletId;
+    private WalletLinkStatus fundingStatus;
+    private UUID payoutWalletId;
+    private WalletLinkStatus payoutStatus;
 
     @SuppressWarnings("java:S107") // reconstitution constructor used by the persistence adapter
     public Deposit(UUID id, UUID ownerId, String institutionName, String accountNumber, DepositType type,
@@ -201,6 +205,42 @@ public class Deposit {
         }
     }
 
+    /** The principal is taken from {@code walletId}; the ledger's answer completes the link. */
+    public void fundFrom(UUID walletId) {
+        fundingWalletId = Objects.requireNonNull(walletId);
+        fundingStatus = WalletLinkStatus.PENDING;
+    }
+
+    /** The settled amount goes to {@code walletId}; the ledger's answer completes the link. */
+    public void payTo(UUID walletId) {
+        if (status != DepositStatus.SETTLED) {
+            throw new DomainException("DEPOSIT_NOT_SETTLED", "Only a settled deposit is paid out");
+        }
+        payoutWalletId = Objects.requireNonNull(walletId);
+        payoutStatus = WalletLinkStatus.PENDING;
+    }
+
+    public void fundingAnswered(boolean recorded) {
+        if (fundingStatus == WalletLinkStatus.PENDING) {
+            fundingStatus = recorded ? WalletLinkStatus.RECORDED : WalletLinkStatus.FAILED;
+        }
+    }
+
+    public void payoutAnswered(boolean recorded) {
+        if (payoutStatus == WalletLinkStatus.PENDING) {
+            payoutStatus = recorded ? WalletLinkStatus.RECORDED : WalletLinkStatus.FAILED;
+        }
+    }
+
+    /** Used by the persistence adapter to restore the wallet links. */
+    public void restoreWalletLinks(UUID fundingWallet, WalletLinkStatus funding, UUID payoutWallet,
+                                   WalletLinkStatus payout) {
+        fundingWalletId = fundingWallet;
+        fundingStatus = funding;
+        payoutWalletId = payoutWallet;
+        payoutStatus = payout;
+    }
+
     private void requireNotSettled() {
         if (status == DepositStatus.SETTLED) {
             throw new DomainException("DEPOSIT_ALREADY_SETTLED", "Deposit has already been settled");
@@ -227,4 +267,8 @@ public class Deposit {
     public Money getSettledAmount() { return settledAmount; }
     public List<DepositTransaction> getTransactions() { return Collections.unmodifiableList(transactions); }
     public Long getVersion() { return version; }
+    public UUID getFundingWalletId() { return fundingWalletId; }
+    public WalletLinkStatus getFundingStatus() { return fundingStatus; }
+    public UUID getPayoutWalletId() { return payoutWalletId; }
+    public WalletLinkStatus getPayoutStatus() { return payoutStatus; }
 }

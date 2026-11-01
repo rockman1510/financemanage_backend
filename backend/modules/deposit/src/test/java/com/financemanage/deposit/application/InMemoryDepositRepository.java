@@ -27,6 +27,11 @@ class InMemoryDepositRepository implements DepositRepository {
     }
 
     @Override
+    public Optional<Deposit> findById(UUID id) {
+        return Optional.ofNullable(store.get(id));
+    }
+
+    @Override
     public List<Deposit> findByOwner(UUID ownerId, DepositStatus status) {
         return store.values().stream()
                 .filter(d -> d.getOwnerId().equals(ownerId))

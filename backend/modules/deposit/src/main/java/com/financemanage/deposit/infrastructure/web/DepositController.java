@@ -1,6 +1,7 @@
 package com.financemanage.deposit.infrastructure.web;
 
 import com.financemanage.deposit.application.DepositService;
+import com.financemanage.deposit.application.DepositWalletService;
 import com.financemanage.deposit.domain.model.DepositStatus;
 import com.financemanage.deposit.infrastructure.web.DepositDtos.CreateDepositRequest;
 import com.financemanage.deposit.infrastructure.web.DepositDtos.DepositPreviewResponse;
@@ -32,9 +33,11 @@ import org.springframework.web.bind.annotation.RestController;
 class DepositController {
 
     private final DepositService service;
+    private final DepositWalletService wallets;
 
-    DepositController(DepositService service) {
+    DepositController(DepositService service, DepositWalletService wallets) {
         this.service = service;
+        this.wallets = wallets;
     }
 
     @GetMapping
@@ -46,7 +49,9 @@ class DepositController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     DepositResponse create(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody CreateDepositRequest request) {
-        return DepositResponse.from(service.open(request.toSpec(CurrentUser.id(jwt))));
+        UUID owner = CurrentUser.id(jwt);
+        return DepositResponse.from(request.fromWalletId() == null ? service.open(request.toSpec(owner))
+                : wallets.openFromWallet(request.toSpec(owner), request.fromWalletId()));
     }
 
     @PostMapping("/preview")
@@ -82,7 +87,9 @@ class DepositController {
     @PostMapping("/{id}/settle")
     SettlementQuoteResponse settle(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                                    @RequestBody(required = false) SettleDepositRequest request) {
-        return SettlementQuoteResponse.from(
-                service.settle(id, CurrentUser.id(jwt), request == null ? null : request.date()));
+        UUID owner = CurrentUser.id(jwt);
+        LocalDate date = request == null ? null : request.date();
+        return SettlementQuoteResponse.from(request == null || request.toWalletId() == null
+                ? service.settle(id, owner, date) : wallets.settleToWallet(id, owner, date, request.toWalletId()));
     }
 }

@@ -463,7 +463,60 @@ req DELETE "/notifications/devices/$ENCODED_TOKEN"
 check_status "Huỷ đăng ký thiết bị" 204
 
 # =====================================================================================
-section "15. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
+section "15. Mục tiêu tiết kiệm & sổ tiết kiệm nối với ví"
+register "saving$RUN_ID@example.com"
+req POST /wallets '{"name":"Tiền mặt","type":"CASH","initialBalance":20000000}'
+SW=$(j .id)
+wait_movement() { # wait_movement GOAL -> waits until the newest movement is no longer PENDING
+  for _ in $(seq 1 10); do req GET "/saving-goals/$1"; [[ "$(j '.movements[0].status')" != "PENDING" ]] && break; sleep 1; done
+}
+req POST /saving-goals "{\"name\":\"Du lịch\",\"target\":10000000,\"deadline\":\"$(add_days 150)\"}"
+check_status "Tạo mục tiêu tiết kiệm" 201
+GOAL=$(j .id)
+req POST "/saving-goals/$GOAL/deposits" "{\"amount\":6000000,\"walletId\":\"$SW\"}"
+check "Nạp 6tr → 202, chờ sổ thu chi" "$STATUS|$(j .status)" "202|PENDING"
+wait_movement "$GOAL"
+check "Đã ghi nhận, đạt 60%" "$(j '"\(.movements[0].status)|\(.saved)|\(.percent)"')" "RECORDED|6000000|60"
+req GET "/wallets/$SW"
+check "Ví bị trừ 6tr" "$(j .balance)" "14000000"
+req GET "/transactions?walletId=$SW"
+check "Giao dịch EXTERNAL_OUT nguồn SAVING, không tính là chi" "$(j '"\(.items[0].type)|\(.items[0].source)"')" "EXTERNAL_OUT|SAVING"
+req GET /transactions/summary
+check "Tổng thu chi không đổi" "$(j length)" "0"
+for _ in $(seq 1 10); do req GET /notifications; [[ "$(j '[.[] | select(.type=="SAVING_GOAL_MILESTONE")] | length')" == "1" ]] && break; sleep 1; done
+check "Thông báo đạt 50%" "$(j '[.[] | select(.type=="SAVING_GOAL_MILESTONE")] | length')" "1"
+req POST "/saving-goals/$GOAL/withdrawals" "{\"amount\":9000000,\"walletId\":\"$SW\"}"
+check "Không rút quá số đã tiết kiệm" "$STATUS|$(j .code)" "422|INSUFFICIENT_SAVINGS"
+req POST "/saving-goals/$GOAL/withdrawals" "{\"amount\":1000000,\"walletId\":\"$SW\"}"
+wait_movement "$GOAL"
+check "Rút 1tr về ví" "$(j '"\(.movements[0].type)|\(.movements[0].status)|\(.saved)"')" "WITHDRAWAL|RECORDED|5000000"
+req PUT "/saving-goals/$GOAL/round-up" "{\"walletId\":\"$SW\",\"unit\":10000}"
+check_status "Bật làm tròn chi tiêu lên 10.000" 200
+FOOD_S=$(curl -s "$API/categories" -H "Authorization: Bearer $TOKEN" | jq -r '.[] | select(.code=="FOOD") | .id')
+req POST /transactions "{\"walletId\":\"$SW\",\"categoryId\":\"$FOOD_S\",\"amount\":47000}"
+for _ in $(seq 1 10); do req GET "/saving-goals/$GOAL"; [[ "$(j '.movements[0].source')" == "ROUND_UP" && "$(j '.movements[0].status')" == "RECORDED" ]] && break; sleep 1; done
+check "Chi 47.000 → để dành 3.000" "$(j '"\(.movements[0].source)|\(.movements[0].amount)|\(.saved)"')" "ROUND_UP|3000|5003000"
+req PUT "/saving-goals/$GOAL/auto-contribution" "{\"amount\":500000,\"walletId\":\"$SW\",\"frequency\":\"MONTHLY\"}"
+check "Trích tự động hằng tháng, kỳ đầu ngay hôm nay" "$STATUS|$(j '.autoContribution.frequency')" "200|MONTHLY"
+wait_movement "$GOAL"
+check "Đã trích 500k" "$(j '"\(.movements[0].source)|\(.saved)"')" "AUTO|5503000"
+req DELETE "/saving-goals/$GOAL"
+check "Không xoá mục tiêu còn tiền" "$STATUS|$(j .code)" "422|GOAL_NOT_EMPTY"
+
+req POST /deposits "{\"institutionName\":\"Vietcombank\",\"type\":\"TERM\",\"principal\":10000000,\"annualRate\":6,\"termMonths\":6,\"openDate\":\"$(today)\",\"fromWalletId\":\"$SW\"}"
+check_status "Mở sổ tiết kiệm bằng tiền trong ví" 201
+DEP=$(j .id)
+for _ in $(seq 1 10); do req GET "/deposits/$DEP"; [[ "$(j .fundingStatus)" == "RECORDED" ]] && break; sleep 1; done
+check "Ví đã bị trừ tiền gốc" "$(j .fundingStatus)" "RECORDED"
+req GET "/wallets/$SW"; BEFORE=$(j .balance)
+req POST "/deposits/$DEP/settle" "{\"date\":\"$(today)\",\"toWalletId\":\"$SW\"}"
+check "Tất toán ngay (lãi 0) về ví" "$STATUS|$(j .total)" "200|10000000"
+for _ in $(seq 1 10); do req GET "/deposits/$DEP"; [[ "$(j .payoutStatus)" == "RECORDED" ]] && break; sleep 1; done
+req GET "/wallets/$SW"
+check "Ví nhận lại 10tr" "$(j .balance)" "$(( BEFORE + 10000000 ))"
+
+# =====================================================================================
+section "16. Tài khoản: xác thực email, quên mật khẩu, khoá tài khoản, thiết bị, hồ sơ, xoá tài khoản"
 ACC_EMAIL="account$RUN_ID@example.com"
 TOKEN=""
 req POST /auth/register "{\"email\":\"$ACC_EMAIL\",\"password\":\"secret123\",\"fullName\":\"Tài khoản Test\",\"deviceName\":\"Điện thoại\"}"
@@ -544,7 +597,7 @@ for _ in $(seq 1 10); do req GET "/wallets?includeArchived=true"; [[ "$(j length
 check "Dữ liệu ở các module khác cũng bị xoá (bất đồng bộ)" "$(j length)" "0"
 
 # =====================================================================================
-section "16. Job đáo hạn/tái tục & thông báo"
+section "17. Job đáo hạn/tái tục & thông báo"
 if [[ "$RUN_JOB_TESTS" != "1" ]]; then
   echo "  (bỏ qua – chạy app với cron nhanh và đặt RUN_JOB_TESTS=1, xem docs/API_TEST_GUIDE.md)"
 else

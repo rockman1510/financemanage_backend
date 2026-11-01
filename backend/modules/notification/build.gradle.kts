@@ -13,4 +13,5 @@ dependencies {
     implementation(project(":modules:ledger"))
     implementation(project(":modules:budget"))
     implementation(project(":modules:bill"))
+    implementation(project(":modules:saving"))
 }

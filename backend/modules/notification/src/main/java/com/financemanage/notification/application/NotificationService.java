@@ -9,6 +9,7 @@ import com.financemanage.deposit.api.DepositEvents.DepositMaturingSoon;
 import com.financemanage.loan.api.LoanEvents.InstallmentDueSoon;
 import com.financemanage.loan.api.LoanEvents.InstallmentOverdue;
 import com.financemanage.loan.api.LoanEvents.LoanPaidOff;
+import com.financemanage.saving.api.SavingEvents.SavingGoalMilestone;
 import com.financemanage.notification.domain.Notification;
 import com.financemanage.notification.domain.NotificationPreferences;
 import com.financemanage.notification.domain.NotificationPreferencesRepository;
@@ -130,6 +131,16 @@ public class NotificationService {
                 "Không ghi được khoản thanh toán \"%s\" (%s). Hoá đơn vẫn đến hạn.".formatted(event.name(),
                         event.reason()),
                 "BILL", event.billId(), "bill-failed:" + event.paymentId());
+    }
+
+    @ApplicationModuleListener
+    public void on(SavingGoalMilestone event) {
+        boolean reached = event.percent() >= 100;
+        notify(event.ownerId(), NotificationType.SAVING_GOAL_MILESTONE,
+                reached ? "Đã đạt mục tiêu tiết kiệm" : "Đã được nửa chặng đường",
+                "Mục tiêu \"%s\": %s / %s (%d%%).".formatted(event.name(), money(event.saved(), event.currency()),
+                        money(event.target(), event.currency()), event.percent()),
+                "SAVING_GOAL", event.goalId(), "saving:" + event.goalId() + ":" + event.percent());
     }
 
     /** Sends the evening reminder to users who recorded nothing today (job, every hour). */

@@ -19,7 +19,7 @@ Mức độ: **MVP** là bản tối thiểu, **Mở rộng** là bản đầy �
 | 2 | Ghi chép giao dịch | MVP | `ledger` | Xong (GĐ 1) |
 | 3 | Ngân sách | MVP | `budget` | Xong (GĐ 3) |
 | 4 | Hoá đơn | MVP | `bill` | Xong (GĐ 3) |
-| 5 | Tiết kiệm | **Mở rộng** (bỏ mục tiêu chung gia đình) | `saving` (mới) + `deposit` (đã có) | Một phần (sổ tiết kiệm) |
+| 5 | Tiết kiệm | **Mở rộng** (bỏ mục tiêu chung gia đình) | `saving` + `deposit` | Xong (GĐ 5) |
 | 6 | Đầu tư | MVP | `investment` (mới) | Chưa làm |
 | 7 | Báo cáo và thống kê | MVP | `reporting` (đã có) | Một phần (dashboard tiền gửi/vay nợ) |
 | 8 | Đa tiền tệ | MVP | `currency` | Xong (GĐ 1); nguồn tỷ giá tự động chưa có provider |

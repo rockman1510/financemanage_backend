@@ -75,6 +75,11 @@ class DepositRepositoryAdapter implements DepositRepository {
     }
 
     @Override
+    public Optional<Deposit> findById(UUID id) {
+        return jpa.findById(id).map(this::toDomain);
+    }
+
+    @Override
     public void deleteByOwner(UUID ownerId) {
         jpa.deleteByOwnerId(ownerId);
     }
@@ -98,6 +103,10 @@ class DepositRepositoryAdapter implements DepositRepository {
         e.note = d.getNote();
         e.settledOn = d.getSettledOn();
         e.settledAmount = d.getSettledAmount() == null ? null : d.getSettledAmount().amount();
+        e.fundingWalletId = d.getFundingWalletId();
+        e.fundingStatus = d.getFundingStatus();
+        e.payoutWalletId = d.getPayoutWalletId();
+        e.payoutStatus = d.getPayoutStatus();
         e.updatedAt = Instant.now();
 
         // transactions are append-only: insert the ones the entity does not know yet
@@ -120,10 +129,12 @@ class DepositRepositoryAdapter implements DepositRepository {
         List<DepositTransaction> txs = e.transactions.stream()
                 .map(t -> new DepositTransaction(t.id, t.type, new Money(t.amount, currency), t.occurredOn))
                 .toList();
-        return new Deposit(e.id, e.ownerId, e.institutionName, e.accountNumber, e.type,
+        Deposit deposit = new Deposit(e.id, e.ownerId, e.institutionName, e.accountNumber, e.type,
                 new Money(e.principalAmount, currency), Percentage.of(e.annualRate),
                 Percentage.of(e.earlyWithdrawalRate), e.termMonths, e.openDate, e.maturityDate,
                 e.interestPaymentMethod, e.rolloverPolicy, e.calculationMethod, e.status, e.note, e.settledOn,
                 e.settledAmount == null ? null : new Money(e.settledAmount, currency), txs, e.version);
+        deposit.restoreWalletLinks(e.fundingWalletId, e.fundingStatus, e.payoutWalletId, e.payoutStatus);
+        return deposit;
     }
 }
