@@ -5,7 +5,7 @@ thức, bạn tự tính lại được bằng máy tính hoặc Excel.
 
 Có 3 cách, từ nhanh đến chi tiết:
 
-1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 170 kiểm tra, mỗi dòng in ✔ hoặc ✘.
+1. **Chạy script tự động**: `scripts/api-flow-test.sh` gồm 184 kiểm tra, mỗi dòng in ✔ hoặc ✘.
 2. **Gọi tay từng bước bằng curl** (mục 3 trở đi): copy từng lệnh, so kết quả với giá trị kỳ vọng.
 3. **Swagger UI**: `http://localhost:8080/swagger-ui.html`. Bấm *Authorize* và dán access token rồi thử từng endpoint.
 
@@ -25,7 +25,7 @@ java -jar app/build/libs/app-0.1.0-SNAPSHOT.jar \
 
 - Profile `dev` dùng H2 nên không cần Docker. Muốn dùng PostgreSQL thì chạy `docker compose up --build` ở thư mục gốc.
 - Hai tham số `cron` cho job đáo hạn/tái tục và job nhắc nợ chạy mỗi 10 giây thay vì mỗi ngày lúc 00:05/00:15, để
-  bạn thấy kết quả ngay. Chỉ cần khi test mục 11 (job).
+  bạn thấy kết quả ngay. Chỉ cần khi test mục 12 (job).
 - Các lệnh trong tài liệu chạy được trên cả **zsh** (mặc định trên macOS) lẫn bash. Riêng lệnh `date` có khác biệt
   giữa macOS và Linux, nên ở chỗ dùng `date` tài liệu ghi cả hai dạng.
 - Kiểm tra app đã chạy: `curl localhost:8080/actuator/health` phải trả `{"status":"UP",...}`.
@@ -39,8 +39,8 @@ RUN_JOB_TESTS=1 ./scripts/api-flow-test.sh            # cần bash, curl, jq
 # BASE_URL=http://host:8080 ./scripts/api-flow-test.sh  # nếu backend ở máy khác
 ```
 
-Kết quả mong đợi ở dòng cuối: `TẤT CẢ 170 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 14 (job) được bỏ
-qua (còn 161 kiểm tra). Phần mã gửi qua email (mục 13) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
+Kết quả mong đợi ở dòng cuối: `TẤT CẢ 184 KIỂM TRA ĐỀU ĐẠT`. Không đặt `RUN_JOB_TESTS=1` thì mục 15 (job) được bỏ
+qua (còn 175 kiểm tra). Phần mã gửi qua email (mục 14) cần backend chạy profile `dev`. Mỗi lần chạy, script tạo người dùng mới nên chạy lại bao nhiêu lần cũng được.
 
 ---
 
@@ -319,7 +319,49 @@ curl -s -X POST $API/recurring-transactions -H "$AUTH" -H "$JSON" \
 
 ---
 
-## 10. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
+## 10. Ngân sách & hoá đơn
+
+Dùng **một user mới** có ví `$CASH` (10.000.000 VND) và lấy id danh mục như mục 7 (`$FOOD`, `$COFFEE`, `RENT` = mã
+`BILLS_RENT`).
+
+Quy tắc ngân sách:
+
+- Ngân sách là hạn mức chi cho **một hoặc nhiều danh mục chi** (bỏ trống = mọi khoản chi), có thể giới hạn **một
+  ví**, theo kỳ `WEEKLY`, `MONTHLY`, `QUARTERLY`, `YEARLY` (lặp lại, `repeat=true` mặc định) hoặc `CUSTOM`
+  (`startDate`–`endDate`, không lặp). Không gửi `startDate` thì kỳ bắt đầu tự nhiên: thứ Hai, ngày 1, đầu quý, 1/1.
+- **Đã chi** = tổng khoản chi trong kỳ, gồm cả danh mục con, như báo cáo (không tính chuyển tiền, điều chỉnh, giao
+  dịch "không tính vào báo cáo"). Khoản chi tiền tệ khác được quy đổi theo tỷ giá; không có tỷ giá thì bỏ qua và báo
+  trong `unconvertedCurrencies`.
+- **Gợi ý mỗi ngày** = còn lại / số ngày còn lại của kỳ (tính cả hôm nay), làm tròn xuống.
+- Trạng thái: `ON_TRACK`, `WARNING` (≥ 80%, `app.budget.warning-percent`), `EXCEEDED` (≥ 100%), `NOT_STARTED`,
+  `ENDED`. Khi một khoản chi làm ngân sách chạm 80% hoặc 100% trong kỳ hiện tại, event `BudgetThresholdReached`
+  được phát **một lần mỗi mức mỗi kỳ** (mục thông báo sẽ dùng event này).
+
+Quy tắc hoá đơn:
+
+- Hoá đơn định kỳ (`WEEKLY`/`MONTHLY`/`QUARTERLY`/`YEARLY`, `interval`), kỳ thứ n tính từ `firstDueDate` nên không trôi
+  ngày. Danh mục phải là danh mục chi, ví không được lưu trữ, số tiền theo tiền tệ của ví.
+- **Thanh toán** trả `202` với trạng thái `PENDING`: hoá đơn gửi lệnh sang sổ thu chi, sổ thu chi ghi khoản chi (có
+  `source=BILL`) rồi trả lời → `RECORDED` (vài trăm ms). Nếu sổ thu chi từ chối (ví vừa bị lưu trữ…), thanh toán thành
+  `FAILED` và kỳ đó **đến hạn lại** (bù trừ).
+- Job hằng ngày (00:20, `app.bill.reminder-cron`) phát `BillDueSoon` khi còn đúng `remindDaysBefore` ngày (mặc định
+  3) và `BillOverdue` vào ngày sau hạn nếu chưa trả.
+
+| # | Thao tác | Lệnh | Kỳ vọng |
+|---|---|---|---|
+| B1 | Tạo ngân sách tháng | `curl -s -X POST $API/budgets -H "$AUTH" -H "$JSON" -d "{\"name\":\"Ăn uống\",\"amount\":1000000,\"categoryIds\":[\"$FOOD\"],\"period\":\"MONTHLY\"}" \| jq` | `201`, `startDate` = ngày 1 tháng này, `current.state=ON_TRACK`, `current.remaining=1000000` |
+| B2 | Ngân sách cho danh mục thu | như B1 với id danh mục `SALARY` | `422 INVALID_CATEGORY` |
+| B3 | Chi 850.000 ở Cà phê | `POST $API/transactions` với `"categoryId":"$COFFEE","amount":850000`, rồi `GET $API/budgets/<id>` | `spent=850000`, `percent=85`, `state=WARNING`, `dailySuggestion` = 150.000 / `daysLeft` |
+| B4 | Xem ở ngày khác | `GET $API/budgets?date=<ngày tháng trước>` | `state=NOT_STARTED` (ngân sách bắt đầu tháng này) |
+| H1 | Tạo hoá đơn | `curl -s -X POST $API/bills -H "$AUTH" -H "$JSON" -d "{\"name\":\"Tiền nhà\",\"amount\":5000000,\"walletId\":\"$CASH\",\"categoryId\":\"$RENT\",\"frequency\":\"MONTHLY\",\"firstDueDate\":\"<hôm nay>\"}" \| jq` | `201`, `nextDueDate` = hôm nay, `daysUntilDue=0`. `GET $API/bills/upcoming?days=7` có hoá đơn này |
+| H2 | Thanh toán | `curl -s -X POST $API/bills/<id>/pay -H "$AUTH" \| jq` (body tuỳ chọn: `amount`, `walletId`, `paidOn`) | `202`, `status=PENDING`; vài giây sau `GET $API/bills/<id>` có `payments[0].status=RECORDED` kèm `transactionId`, `nextDueDate` sang tháng sau, ví bị trừ 5tr |
+| H3 | Giao dịch sinh ra | `curl -s "$API/transactions?categoryId=$RENT" -H "$AUTH" \| jq '.items[0] \| {type,source,amount}'` | `EXPENSE`, `BILL`, `5000000` |
+| H4 | Bỏ qua một kỳ | `curl -s -X POST $API/bills/<id>/skip -H "$AUTH" \| jq .status` | `SKIPPED`, kỳ tiếp theo lùi thêm 1 tháng |
+| H5 | Tạm dừng nhắc | `PATCH $API/bills/<id>` với `{"active":false}` | `active=false`, không còn nhắc |
+
+---
+
+## 11. Tài khoản: email, mật khẩu, thiết bị, 2FA, Google, xoá tài khoản
 
 Dùng **một user mới**, đăng ký kèm `deviceName`. Lấy mã trong email:
 
@@ -366,7 +408,7 @@ Quy tắc:
 
 ---
 
-## 11. Job đáo hạn, tái tục và thông báo
+## 12. Job đáo hạn, tái tục và thông báo
 
 Phần này cần app đang chạy với cron mỗi 10 giây (mục 1). Tạo các sổ kỳ hạn 2 tháng đã đáo hạn cách đây 3 ngày:
 
@@ -408,7 +450,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 
 ---
 
-## 12. Bảng đối chiếu quy tắc nghiệp vụ
+## 13. Bảng đối chiếu quy tắc nghiệp vụ
 
 | Quy tắc | Kiểm tra ở |
 |---|---|
@@ -417,7 +459,7 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Lãi tích luỹ dừng ở ngày đáo hạn | D1 |
 | Rút trước hạn tính lãi theo lãi suất không kỳ hạn, báo rõ số lãi bị mất | D4 |
 | Không tất toán 2 lần; không tất toán trước ngày gửi | D6, D9 |
-| Tái tục gốc / gốc + lãi / không tái tục | Mục 11 |
+| Tái tục gốc / gốc + lãi / không tái tục | Mục 12 |
 | Lịch trả nợ đúng cho 4 phương thức, tổng gốc luôn đúng bằng số tiền vay | 5.1 |
 | Thanh toán trừ lãi trước gốc, kỳ cũ trước | L2, L8 |
 | Gửi lại cùng Idempotency-Key không trừ tiền 2 lần | L3 |
@@ -442,3 +484,5 @@ Thông báo xem bằng `curl -s $API/notifications -H "$AUTH" | jq '.[] | {type,
 | Refresh token xoay vòng theo phiên; đăng xuất từng thiết bị | U6, U7 |
 | 2FA: cần mã khi đăng nhập, mã khôi phục dùng một lần | U11–U13 |
 | Xoá tài khoản xoá dữ liệu ở mọi module | U15 |
+| Ngân sách tính cả danh mục con, quy đổi tiền tệ, gợi ý mức chi mỗi ngày | B1–B4 |
+| Thanh toán hoá đơn ghi khoản chi qua sổ thu chi (saga), kỳ sau không trôi ngày | H1–H4 |

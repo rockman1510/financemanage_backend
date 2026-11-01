@@ -9,7 +9,11 @@ public enum TransactionType {
     /** Điều chỉnh số dư tăng */
     ADJUSTMENT_IN(1),
     /** Điều chỉnh số dư giảm */
-    ADJUSTMENT_OUT(-1);
+    ADJUSTMENT_OUT(-1),
+    /** Tiền về ví từ module khác (rút tiết kiệm, bán tài sản đầu tư…); không phải thu nhập */
+    EXTERNAL_IN(1),
+    /** Tiền ra khỏi ví sang module khác (nạp tiết kiệm, mua tài sản đầu tư…); không phải chi tiêu */
+    EXTERNAL_OUT(-1);
 
     private final int sign;
 

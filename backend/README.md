@@ -34,6 +34,8 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | `app.ledger.recurring-cron` | `0 30 0 * * *` | Job ghi giao dịch định kỳ đến hạn |
 | `ATTACHMENTS_DIR` (`app.ledger.attachments.directory`), `app.ledger.attachments.max-size` | `./data/attachments`, `5MB` | Nơi lưu và kích thước tối đa của ảnh hoá đơn |
 | `app.currency.refresh-cron` | `0 0 6 * * *` | Job lấy tỷ giá từ các `ExchangeRateProvider` (không làm gì khi chưa có provider) |
+| `app.budget.warning-percent` | `80` | Mức % ngân sách phát cảnh báo (100% luôn cảnh báo) |
+| `app.bill.reminder-cron` | `0 20 0 * * *` | Job nhắc hoá đơn sắp đến hạn / quá hạn |
 | `app.reporting.upcoming-days`, `projection-months` | `30`, `12` | Dashboard |
 | `spring.cache.type` | `simple` | Đổi sang `redis` (thêm `spring-boot-starter-data-redis`) khi chạy nhiều instance |
 
@@ -49,6 +51,8 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 | Giao dịch | `GET/POST /transactions` (lọc + phân trang; header `Idempotency-Key`), `GET /transactions/summary`, `GET/PATCH/DELETE /transactions/{id}`, `POST /transactions/{id}/attachments`, `GET/DELETE /attachments/{id}` |
 | Chuyển tiền | `POST /transfers` (header `Idempotency-Key`), `DELETE /transfers/{transferId}` |
 | Giao dịch định kỳ | `GET/POST /recurring-transactions`, `GET/PATCH/DELETE /recurring-transactions/{id}` |
+| Ngân sách | `GET/POST /budgets` (`?date=` để xem kỳ khác), `GET/PATCH/DELETE /budgets/{id}` |
+| Hoá đơn | `GET/POST /bills`, `GET /bills/upcoming?days=30`, `GET/PATCH/DELETE /bills/{id}`, `POST /bills/{id}/pay` (202), `POST /bills/{id}/skip` |
 | Tỷ giá | `GET/POST /exchange-rates`, `DELETE /exchange-rates/{id}`, `GET /exchange-rates/convert` |
 | Tiền gửi | `GET/POST /deposits`, `POST /deposits/preview`, `GET/PATCH/DELETE /deposits/{id}`, `GET /deposits/{id}/settlement-quote`, `POST /deposits/{id}/settle` |
 | Vay nợ | `GET/POST /loans`, `POST /loans/preview-schedule`, `GET/PATCH/DELETE /loans/{id}`, `POST /loans/{id}/repayments` (header `Idempotency-Key`), `POST /loans/{id}/prepayments`, `POST /loans/{id}/rate-changes` |
@@ -64,5 +68,7 @@ Flyway · PostgreSQL (H2 cho dev/test) · ShedLock · springdoc-openapi.
 - **Nguồn tỷ giá tự động** (bảng tỷ giá ngân hàng…): implement `ExchangeRateProvider`, khai báo bean.
 - **Lưu ảnh hoá đơn lên object storage** (S3, R2…): implement `AttachmentStorage` thay cho bản lưu đĩa local.
 - **Chuyển sang Keycloak**: thay bean `JwtDecoder` trong `SecurityConfig` bằng `NimbusJwtDecoder.withIssuerLocation(...)`.
+- **Module khác cần ghi tiền vào/ra ví**: phát `LedgerCommands.RecordExternalTransaction` và nghe
+  `ExternalTransactionRecorded/Rejected` (cách hoá đơn đang làm) – không ghi thẳng vào sổ thu chi.
 - **Tách microservice**: mỗi module đã có schema, migration, API và event riêng → tạo Spring Boot app mới chỉ phụ
   thuộc module đó + `shared-kernel`, chuyển transport của event sang Kafka (`spring-modulith-events-kafka`).

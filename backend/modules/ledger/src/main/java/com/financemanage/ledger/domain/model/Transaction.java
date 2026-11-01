@@ -36,6 +36,7 @@ public class Transaction {
     private final BigDecimal exchangeRate;
     private final UUID recurringId;
     private final String idempotencyKey;
+    private final Origin origin;
     private final Instant createdAt;
     private final Long version;
 
@@ -43,7 +44,7 @@ public class Transaction {
     public Transaction(UUID id, UUID ownerId, UUID walletId, TransactionType type, Money amount, UUID categoryId,
                        LocalDate occurredOn, String note, String withPerson, boolean excludeFromReport,
                        UUID transferId, UUID counterpartWalletId, BigDecimal exchangeRate, UUID recurringId,
-                       String idempotencyKey, Instant createdAt, Long version) {
+                       String idempotencyKey, Origin origin, Instant createdAt, Long version) {
         this.id = Objects.requireNonNull(id);
         this.ownerId = Objects.requireNonNull(ownerId);
         this.walletId = Objects.requireNonNull(walletId);
@@ -59,6 +60,7 @@ public class Transaction {
         this.exchangeRate = exchangeRate;
         this.recurringId = recurringId;
         this.idempotencyKey = idempotencyKey;
+        this.origin = origin;
         this.createdAt = Objects.requireNonNull(createdAt);
         this.version = version;
     }
@@ -74,7 +76,7 @@ public class Transaction {
         return new Transaction(UUID.randomUUID(), spec.ownerId(), wallet.getId(),
                 TransactionType.of(category.getType()), Texts.positiveAmount(spec.amount()), category.getId(),
                 spec.occurredOn(), note(spec.note()), person(spec.withPerson()), spec.excludeFromReport(), null, null,
-                null, spec.recurringId(), spec.idempotencyKey(), Instant.now(), null);
+                null, spec.recurringId(), spec.idempotencyKey(), spec.origin(), Instant.now(), null);
     }
 
     /** Brings the wallet balance to {@code newBalance}; a zero difference is rejected. */
@@ -88,8 +90,28 @@ public class Transaction {
         }
         TransactionType type = delta.isPositive() ? TransactionType.ADJUSTMENT_IN : TransactionType.ADJUSTMENT_OUT;
         return new Transaction(UUID.randomUUID(), ownerId, wallet.getId(), type, delta.isPositive() ? delta
-                : delta.negated(), null, occurredOn, note(note), null, true, null, null, null, null, null,
+                : delta.negated(), null, occurredOn, note(note), null, true, null, null, null, null, null, null,
                 Instant.now(), null);
+    }
+
+    /**
+     * Money moved between a wallet and another module's pot (a savings goal, an investment account…), requested by
+     * that module. It changes the wallet balance but is never income or expense in reports.
+     */
+    public static Transaction external(UUID ownerId, Wallet wallet, boolean inflow, Money amount,
+                                       LocalDate occurredOn, String note, Origin origin, String idempotencyKey) {
+        if (!wallet.getOwnerId().equals(ownerId)) {
+            throw new DomainException("FOREIGN_RESOURCE", "Wallet must belong to the same user");
+        }
+        wallet.requireUsable();
+        wallet.requireCurrency(amount);
+        if (occurredOn == null) {
+            throw new DomainException("DATE_REQUIRED", "Transaction date is required");
+        }
+        return new Transaction(UUID.randomUUID(), ownerId, wallet.getId(),
+                inflow ? TransactionType.EXTERNAL_IN : TransactionType.EXTERNAL_OUT, Texts.positiveAmount(amount),
+                null, occurredOn, note(note), null, true, null, null, null, null, idempotencyKey,
+                Objects.requireNonNull(origin), Instant.now(), null);
     }
 
     /**
@@ -120,11 +142,11 @@ public class Transaction {
         Instant now = Instant.now();
         String text = note(note);
         Transaction out = new Transaction(UUID.randomUUID(), ownerId, from.getId(), TransactionType.TRANSFER_OUT,
-                amount, null, occurredOn, text, null, true, transferId, to.getId(), rate, null, idempotencyKey, now,
-                null);
+                amount, null, occurredOn, text, null, true, transferId, to.getId(), rate, null, idempotencyKey, null,
+                now, null);
         Transaction in = new Transaction(UUID.randomUUID(), ownerId, to.getId(), TransactionType.TRANSFER_IN,
-                receivedAmount, null, occurredOn, text, null, true, transferId, from.getId(), rate, null, null, now,
-                null);
+                receivedAmount, null, occurredOn, text, null, true, transferId, from.getId(), rate, null, null, null,
+                now, null);
         return new TransferLegs(out, in);
     }
 
@@ -200,12 +222,21 @@ public class Transaction {
     public BigDecimal getExchangeRate() { return exchangeRate; }
     public UUID getRecurringId() { return recurringId; }
     public String getIdempotencyKey() { return idempotencyKey; }
+    public Origin getOrigin() { return origin; }
     public Instant getCreatedAt() { return createdAt; }
     public Long getVersion() { return version; }
 
-    /** Input for an income or expense. */
+    /** Input for an income or expense; {@code origin} is set when another module requested it. */
     public record NewTransaction(UUID ownerId, Money amount, LocalDate occurredOn, String note, String withPerson,
-                                 boolean excludeFromReport, UUID recurringId, String idempotencyKey) {
+                                 boolean excludeFromReport, UUID recurringId, String idempotencyKey, Origin origin) {
+    }
+
+    /** The module and record that asked for this transaction, e.g. ("BILL", payment id). */
+    public record Origin(String source, UUID sourceId) {
+        public Origin {
+            Objects.requireNonNull(source);
+            Objects.requireNonNull(sourceId);
+        }
     }
 
     public record TransferLegs(Transaction out, Transaction in) {

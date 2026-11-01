@@ -17,8 +17,8 @@ Mức độ: **MVP** là bản tối thiểu, **Mở rộng** là bản đầy �
 |---|---|---|---|---|
 | 1 | Quản lý ví (tự nhập, không kết nối ngân hàng) | MVP | `ledger` | Xong (GĐ 1) |
 | 2 | Ghi chép giao dịch | MVP | `ledger` | Xong (GĐ 1) |
-| 3 | Ngân sách | MVP | `budget` (mới) | Chưa làm |
-| 4 | Hoá đơn | MVP | `bill` (mới) | Chưa làm |
+| 3 | Ngân sách | MVP | `budget` | Xong (GĐ 3) |
+| 4 | Hoá đơn | MVP | `bill` | Xong (GĐ 3) |
 | 5 | Tiết kiệm | **Mở rộng** (bỏ mục tiêu chung gia đình) | `saving` (mới) + `deposit` (đã có) | Một phần (sổ tiết kiệm) |
 | 6 | Đầu tư | MVP | `investment` (mới) | Chưa làm |
 | 7 | Báo cáo và thống kê | MVP | `reporting` (đã có) | Một phần (dashboard tiền gửi/vay nợ) |

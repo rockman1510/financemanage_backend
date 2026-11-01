@@ -1,6 +1,7 @@
 package com.financemanage.ledger.application;
 
 import com.financemanage.currency.api.CurrencyConversionApi;
+import com.financemanage.ledger.api.LedgerCommands.RecordExternalTransaction;
 import com.financemanage.ledger.api.LedgerEvents.TransactionDeleted;
 import com.financemanage.ledger.api.LedgerEvents.TransactionRecorded;
 import com.financemanage.ledger.api.LedgerEvents.TransactionSnapshot;
@@ -9,10 +10,12 @@ import com.financemanage.ledger.domain.CategoryRepository;
 import com.financemanage.ledger.domain.TransactionRepository;
 import com.financemanage.ledger.domain.WalletRepository;
 import com.financemanage.ledger.domain.model.Category;
+import com.financemanage.ledger.domain.model.CategoryType;
 import com.financemanage.ledger.domain.model.PageResult;
 import com.financemanage.ledger.domain.model.RecurringTransaction;
 import com.financemanage.ledger.domain.model.Transaction;
 import com.financemanage.ledger.domain.model.Transaction.NewTransaction;
+import com.financemanage.ledger.domain.model.Transaction.Origin;
 import com.financemanage.ledger.domain.model.Transaction.TransferLegs;
 import com.financemanage.ledger.domain.model.TransactionFilter;
 import com.financemanage.ledger.domain.model.TransactionTotals;
@@ -89,7 +92,43 @@ public class TransactionService {
         Category category = category(input.categoryId(), ownerId);
         Transaction transaction = Transaction.record(new NewTransaction(ownerId,
                 new Money(input.amount(), wallet.currency()), dateOrToday(input.occurredOn()), input.note(),
-                input.withPerson(), input.excludeFromReport(), recurringId, idempotencyKey), wallet, category);
+                input.withPerson(), input.excludeFromReport(), recurringId, idempotencyKey, null), wallet, category);
+        wallet.apply(transaction.signedAmount());
+        wallets.save(wallet);
+        Transaction saved = transactions.save(transaction);
+        events.publishEvent(new TransactionRecorded(snapshot(saved)));
+        return saved;
+    }
+
+    /**
+     * Records a movement requested by another module. Repeating the same request returns the first result. A
+     * business error (unknown or archived wallet, wrong category…) is thrown without marking the surrounding
+     * transaction for rollback, so the caller can answer with a rejection.
+     */
+    @Transactional(noRollbackFor = DomainException.class)
+    public Transaction recordExternal(RecordExternalTransaction command) {
+        String key = "ext:" + command.source() + ":" + command.requestId();
+        Optional<Transaction> existing = transactions.findByIdempotencyKey(command.ownerId(), key);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        Origin origin = new Origin(command.source(), command.sourceId());
+        Wallet wallet = wallet(command.walletId(), command.ownerId());
+        Money amount = Money.of(command.amount(), command.currency());
+        LocalDate date = dateOrToday(command.occurredOn());
+        Transaction transaction;
+        if (command.categoryId() != null) {
+            Category category = category(command.categoryId(), command.ownerId());
+            if (category.getType() != (command.inflow() ? CategoryType.INCOME : CategoryType.EXPENSE)) {
+                throw new DomainException("CATEGORY_TYPE_MISMATCH",
+                        "The category type does not match the direction of the money");
+            }
+            transaction = Transaction.record(new NewTransaction(command.ownerId(), amount, date, command.note(), null,
+                    false, null, key, origin), wallet, category);
+        } else {
+            transaction = Transaction.external(command.ownerId(), wallet, command.inflow(), amount, date,
+                    command.note(), origin, key);
+        }
         wallet.apply(transaction.signedAmount());
         wallets.save(wallet);
         Transaction saved = transactions.save(transaction);
@@ -235,7 +274,9 @@ public class TransactionService {
     static TransactionSnapshot snapshot(Transaction t) {
         return new TransactionSnapshot(t.getId(), t.getOwnerId(), t.getWalletId(), t.getType().name(),
                 t.getAmount().amount(), t.signedAmount().amount(), t.getAmount().currencyCode(), t.getCategoryId(),
-                t.getOccurredOn(), t.isExcludeFromReport(), t.getTransferId(), t.getRecurringId());
+                t.getOccurredOn(), t.isExcludeFromReport(), t.getTransferId(), t.getRecurringId(),
+                t.getOrigin() == null ? null : t.getOrigin().source(),
+                t.getOrigin() == null ? null : t.getOrigin().sourceId());
     }
 
     /** The key was already used for a different kind of request (a transaction vs a transfer). */

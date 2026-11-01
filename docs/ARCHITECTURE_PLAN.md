@@ -317,5 +317,9 @@ Mỗi feature độc lập → thêm feature mới không ảnh hưởng feature
   đăng nhập Google, quản lý thiết bị, hồ sơ, 2FA TOTP, xoá tài khoản). Event `UserDeleted` để mọi module tự xoá dữ
   liệu của người dùng.
 
+- **Giai đoạn 3 (xong)**: `budget` (đọc số chi qua `LedgerQueryApi`, cảnh báo theo event giao dịch) và `bill`
+  (thanh toán = saga: lệnh `RecordExternalTransaction` qua outbox, sổ thu chi trả lời ghi nhận / từ chối, hoá đơn
+  tự bù trừ khi bị từ chối).
+
 Phạm vi giai đoạn tiếp theo (ví, giao dịch, ngân sách, hoá đơn, tiết kiệm, đầu tư, đa tiền tệ, đăng nhập mở rộng,
 thông báo) được chốt trong [FEATURE_SCOPE.md](FEATURE_SCOPE.md). Chia sẻ dữ liệu trong gia đình đã bị loại khỏi phạm vi.

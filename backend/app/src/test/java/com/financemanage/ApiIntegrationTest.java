@@ -598,6 +598,78 @@ class ApiIntegrationTest {
         });
     }
 
+    @Test
+    void budgetsFollowSpendingAndBillsArePaidThroughTheLedger() throws Exception {
+        String categories = mvc.perform(auth(get("/api/v1/categories"))).andReturn().getResponse()
+                .getContentAsString();
+        String food = categoryId(categories, "FOOD");
+        String coffee = categoryId(categories, "FOOD_COFFEE");
+        String rent = categoryId(categories, "BILLS_RENT");
+        String salary = categoryId(categories, "SALARY");
+        String cash = createWallet("Tiền mặt", "CASH", "VND", 10_000_000);
+
+        String budget = mvc.perform(auth(json(post("/api/v1/budgets"), """
+                        {"name":"Ăn uống","amount":1000000,"categoryIds":["%s"],"period":"MONTHLY"}"""
+                        .formatted(food))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.startDate").value(today.withDayOfMonth(1).toString()))
+                .andExpect(jsonPath("$.current.state").value("ON_TRACK"))
+                .andExpect(jsonPath("$.current.remaining").value(1_000_000))
+                .andReturn().getResponse().getContentAsString();
+        String budgetId = JsonPath.read(budget, "$.id");
+        mvc.perform(auth(json(post("/api/v1/budgets"), """
+                        {"name":"Lương?","amount":1,"categoryIds":["%s"],"period":"MONTHLY"}""".formatted(salary))))
+                .andExpect(status().isUnprocessableContent()).andExpect(jsonPath("$.code").value("INVALID_CATEGORY"));
+
+        mvc.perform(auth(json(post("/api/v1/transactions"),
+                "{\"walletId\":\"%s\",\"categoryId\":\"%s\",\"amount\":850000}".formatted(cash, coffee))))
+                .andExpect(status().isCreated());
+        mvc.perform(auth(get("/api/v1/budgets/" + budgetId)))
+                .andExpect(jsonPath("$.current.spent").value(850_000))
+                .andExpect(jsonPath("$.current.percent").value(85))
+                .andExpect(jsonPath("$.current.state").value("WARNING"))
+                .andExpect(jsonPath("$.current.dailySuggestion").isNumber());
+        mvc.perform(auth(get("/api/v1/budgets?date=" + today.minusMonths(1).withDayOfMonth(1))))
+                .andExpect(jsonPath("$[0].current.state").value("NOT_STARTED"));
+
+        String bill = mvc.perform(auth(json(post("/api/v1/bills"), """
+                        {"name":"Tiền nhà","amount":5000000,"walletId":"%s","categoryId":"%s","frequency":"MONTHLY",
+                         "firstDueDate":"%s","remindDaysBefore":3}""".formatted(cash, rent, today))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.nextDueDate").value(today.toString()))
+                .andExpect(jsonPath("$.daysUntilDue").value(0))
+                .andReturn().getResponse().getContentAsString();
+        String billId = JsonPath.read(bill, "$.id");
+        mvc.perform(auth(get("/api/v1/bills/upcoming?days=7"))).andExpect(jsonPath("$", hasSize(1)));
+
+        mvc.perform(auth(post("/api/v1/bills/" + billId + "/pay")))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.dueDate").value(today.toString()));
+        mvc.perform(auth(get("/api/v1/bills/" + billId)))
+                .andExpect(jsonPath("$.nextDueDate").value(today.plusMonths(1).toString()));
+        // the ledger records the expense right after the payment commits
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            mvc.perform(auth(get("/api/v1/bills/" + billId)))
+                    .andExpect(jsonPath("$.payments[0].status").value("RECORDED"))
+                    .andExpect(jsonPath("$.payments[0].transactionId").isNotEmpty());
+            expectBalance(cash, 10_000_000 - 850_000 - 5_000_000);
+        });
+        mvc.perform(auth(get("/api/v1/transactions?categoryId=" + rent)))
+                .andExpect(jsonPath("$.items[0].source").value("BILL"))
+                .andExpect(jsonPath("$.items[0].type").value("EXPENSE"));
+
+        mvc.perform(auth(post("/api/v1/bills/" + billId + "/skip")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SKIPPED"));
+        mvc.perform(auth(get("/api/v1/bills/" + billId)))
+                .andExpect(jsonPath("$.nextDueDate").value(today.plusMonths(2).toString()))
+                .andExpect(jsonPath("$.payments", hasSize(2)));
+        mvc.perform(auth(get("/api/v1/bills/" + billId), register(UUID.randomUUID() + "@example.com")))
+                .andExpect(status().isNotFound());
+        mvc.perform(auth(delete("/api/v1/budgets/" + budgetId))).andExpect(status().isNoContent());
+        mvc.perform(auth(delete("/api/v1/bills/" + billId))).andExpect(status().isNoContent());
+    }
+
     private String lastCode(String email) {
         String subject = mailbox.messagesTo(email).getFirst().subject();
         Matcher matcher = Pattern.compile("(\\d{6})").matcher(subject);

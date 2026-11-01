@@ -3,7 +3,6 @@ package com.financemanage.ledger.application;
 import com.financemanage.currency.api.CurrencyConversionApi;
 import com.financemanage.ledger.api.LedgerEvents.WalletChanged;
 import com.financemanage.ledger.api.LedgerEvents.WalletDeleted;
-import com.financemanage.ledger.api.LedgerQueryApi;
 import com.financemanage.ledger.api.WalletBalance;
 import com.financemanage.ledger.domain.RecurringTransactionRepository;
 import com.financemanage.ledger.domain.TransactionRepository;
@@ -28,10 +27,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Wallet use cases. Also serves the module's public {@link LedgerQueryApi}. */
+/** Wallet use cases. */
 @Service
 @Transactional
-public class WalletService implements LedgerQueryApi {
+public class WalletService {
 
     private final WalletRepository wallets;
     private final TransactionRepository transactions;
@@ -112,7 +111,6 @@ public class WalletService implements LedgerQueryApi {
         return new WalletTotal(total, lines, missingRates);
     }
 
-    @Override
     @Transactional(readOnly = true)
     public List<WalletBalance> walletBalances(UUID ownerId) {
         return wallets.findByOwner(ownerId, true).stream()
