@@ -164,42 +164,52 @@ Package gốc `com.financemanage.mobile`; phiên bản khai báo trong `gradle/l
 - **Màn hình**: Chào (logo, Đăng nhập, Tạo tài khoản) · Đăng ký (họ tên, email, mật khẩu 8–72 có hiện/ẩn) · Đăng nhập
   (email, mật khẩu, Quên mật khẩu?, nút **Google chỉ trên Android**) · Xác thực 2 bước (mã 6 số tự nhảy ô; link "Dùng mã
   khôi phục") · Quên mật khẩu (email → nhập mã 6 số + mật khẩu mới).
-- **Luồng**: đăng ký thành công → Onboarding (F03); đăng nhập trả `twoFactorRequired` → màn 2FA với `challengeToken`
-  (hết hạn 5 phút → quay lại đăng nhập); Google: Credential Manager lấy ID token → `/auth/google`; đặt lại mật khẩu xong
+- **Luồng**: đăng ký thành công → Onboarding (F03); **2FA là tuỳ chọn**: tài khoản chưa bật 2FA đăng nhập thẳng vào app,
+  không có bước 2FA; chỉ khi đăng nhập trả `twoFactorRequired` mới hiện màn 2FA với `challengeToken` (hết hạn 5 phút →
+  quay lại đăng nhập); Google: Credential Manager lấy ID token → `/auth/google`; đặt lại mật khẩu xong
   → về Đăng nhập kèm thông báo; gửi `deviceName` (tên máy).
 - **API**: §4.1 – `POST /auth/register`, `/auth/login`, `/auth/2fa/verify`, `/auth/google`, `/auth/forgot-password`,
   `/auth/reset-password`, `/auth/logout`.
 - **Quy tắc & lỗi**: `EMAIL_TAKEN` dưới ô email; `INVALID_CREDENTIALS` "Email hoặc mật khẩu không đúng";
   `ACCOUNT_LOCKED` (429) "Tạm khoá 15 phút"; `INVALID_CODE`; `GOOGLE_SIGN_IN_DISABLED`; quên mật khẩu luôn báo "Nếu email
   tồn tại, mã đã được gửi".
-- **Tiêu chí hoàn thành**: đăng ký, đăng nhập, 2FA, quên/đặt lại mật khẩu chạy với backend thật; mở lại app vẫn đăng
-  nhập; refresh token hết hạn → về Đăng nhập không lặp.
-- **Test**: ViewModel đăng nhập (thường, 2FA, lỗi), repository lưu/xoá token.
+- **Tiêu chí hoàn thành**: đăng ký, đăng nhập, 2FA, quên/đặt lại mật khẩu chạy với backend thật; tài khoản không bật 2FA
+  không bao giờ thấy màn 2FA; mở lại app vẫn đăng nhập; refresh token hết hạn → về Đăng nhập không lặp.
+- **Test**: ViewModel đăng nhập (thường – không 2FA, có 2FA, lỗi), repository lưu/xoá token.
 
 ### F03. Onboarding
 
-- **Màn hình** (3 bước, có thanh tiến độ, bỏ qua được bước 3): (1) Chọn tiền tệ mặc định (VND mặc định, tìm kiếm mã
-  ISO) · (2) Tạo ví đầu tiên (tên gợi ý "Tiền mặt", loại, số dư hiện có bằng `AmountKeypad`) · (3) Tạo ngân sách tháng
-  (số tiền cho mọi khoản chi).
-- **API**: `PATCH /me` (defaultCurrency), `POST /wallets`, `POST /budgets` (§4.2, §5.1, §7).
-- **Tiêu chí hoàn thành**: chỉ hiện một lần (cờ trong DataStore + kiểm tra đã có ví); xong → Tổng quan có dữ liệu.
+- **Màn hình** (4 bước, có thanh tiến độ; bước 3 và 4 bỏ qua được): (1) Chọn tiền tệ mặc định (VND mặc định, tìm kiếm
+  mã ISO) · (2) Tạo ví đầu tiên (tên gợi ý "Tiền mặt", loại, số dư hiện có bằng `AmountKeypad`) · (3) Tạo ngân sách tháng
+  (số tiền cho mọi khoản chi) · (4) **Bảo vệ tài khoản – tuỳ chọn**: giải thích ngắn về xác thực 2 bước (mã 6 số từ
+  Google Authenticator mỗi lần đăng nhập), hai nút **"Bật ngay"** (mở luồng bật 2FA của F04, xong quay lại) và **"Bỏ
+  qua"** (nổi bật như nhau, không cảnh báo, không hỏi lại). Tài khoản đăng nhập bằng Google cũng thấy bước này.
+- **API**: `PATCH /me` (defaultCurrency), `POST /wallets`, `POST /budgets`, `/me/2fa/*` khi chọn "Bật ngay" (§4.2, §5.1,
+  §7).
+- **Tiêu chí hoàn thành**: chỉ hiện một lần (cờ trong DataStore + kiểm tra đã có ví); bỏ qua bước 4 vẫn vào app bình
+  thường và 2FA vẫn tắt; xong → Tổng quan có dữ liệu.
+- **Test**: ViewModel onboarding (bỏ qua bước 3, bỏ qua bước 4, bật 2FA ở bước 4).
 
 ### F04. Hồ sơ, cài đặt, bảo mật
 
 - **Màn hình Cài đặt**: thẻ hồ sơ (tên, email, nhãn "Chưa xác thực") · Hồ sơ (họ tên, tiền tệ mặc định, ngôn ngữ, múi
   giờ, ngày bắt đầu tháng 1–28) · Xác thực email (gửi mã, nhập mã; đếm ngược 60 giây trước khi gửi lại) · Mật khẩu (đổi;
-  tài khoản chỉ có Google: "Đặt mật khẩu" không cần mật khẩu cũ) · Xác thực 2 bước (bật: hiện QR từ `otpauthUri` + mã
-  `secret` để chép → nhập mã → hiện **10 mã khôi phục một lần** có nút chép/lưu, bắt xác nhận "Tôi đã lưu"; tắt: nhập
-  mã) · Thiết bị đăng nhập (danh sách, đánh dấu máy này, thu hồi từng máy, "Đăng xuất mọi máy khác") · Thông báo (F20) ·
+  tài khoản chỉ có Google: "Đặt mật khẩu" không cần mật khẩu cũ) · Xác thực 2 bước – **tuỳ chọn, mặc định tắt**
+  (dòng hiển thị trạng thái "Đang tắt"/"Đang bật"; bật: hiện QR từ `otpauthUri` + mã `secret` để chép → nhập mã → hiện
+  **10 mã khôi phục một lần** có nút chép/lưu, bắt xác nhận "Tôi đã lưu"; huỷ giữa chừng thì 2FA vẫn tắt; tắt: nhập mã
+  TOTP hoặc mã khôi phục, bất cứ lúc nào) · Thẻ gợi ý "Tăng bảo mật bằng xác thực 2 bước" đầu màn Cài đặt khi 2FA đang tắt,
+  có nút "Bật" và "Để sau" (ẩn 30 ngày, lưu trong DataStore) – không bao giờ chặn người dùng · Thiết bị đăng nhập
+  (danh sách, đánh dấu máy này, thu hồi từng máy, "Đăng xuất mọi máy khác") · Thông báo (F20) ·
   Tỷ giá (F11) · Khoá app (công tắc vân tay/Face ID, thời gian khoá lại 1/5/15 phút) · Ẩn số dư mặc định · Giao diện
   (sáng/tối/hệ thống) · Đăng xuất · **Xoá tài khoản** (cảnh báo, nhập lại email + mật khẩu).
 - **API**: §4.2 – `GET/PATCH /me`, `/me/email/*`, `/me/password`, `/me/2fa/*`, `/me/sessions`, `DELETE /me`.
 - **Quy tắc & lỗi**: `WRONG_PASSWORD`, `INVALID_CODE`, `RESEND_TOO_SOON` (429), `CONFIRMATION_MISMATCH`; xoá tài khoản
   thành công → xoá dữ liệu local, về màn Chào. Khoá app dùng BiometricPrompt / LocalAuthentication (expect/actual),
   dự phòng mã PIN của máy.
-- **Tiêu chí hoàn thành**: mọi mục chạy với backend thật; bật 2FA rồi đăng nhập lại phải qua màn 2FA; thu hồi máy khác
-  làm máy đó bị đăng xuất khi refresh.
-- **Test**: ViewModel 2FA (setup → enable → recovery codes), xoá tài khoản (xoá cache).
+- **Tiêu chí hoàn thành**: mọi mục chạy với backend thật; dùng app đầy đủ mà không bật 2FA; bật 2FA rồi đăng nhập lại
+  phải qua màn 2FA, tắt đi thì không còn; thu hồi máy khác làm máy đó bị đăng xuất khi refresh.
+- **Test**: ViewModel 2FA (setup → enable → recovery codes; huỷ giữa chừng; disable), thẻ gợi ý (ẩn 30 ngày), xoá tài
+  khoản (xoá cache).
 
 ### F05. Ví
 

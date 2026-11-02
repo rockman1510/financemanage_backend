@@ -174,33 +174,43 @@ Root package `com.financemanage.mobile`; versions declared in `gradle/libs.versi
 - **Screens**: Welcome (logo, Sign in, Create account) · Sign up (full name, e-mail, password 8–72 with show/hide) · Sign
   in (e-mail, password, Forgot password?, **Google button on Android only**) · Two-step verification (6-digit code with
   auto-advancing boxes; "Use a recovery code" link) · Forgot password (e-mail → 6-digit code + new password).
-- **Flows**: successful sign-up → Onboarding (F03); sign-in returning `twoFactorRequired` → 2FA screen with
-  `challengeToken` (expires after 5 minutes → back to Sign in); Google: Credential Manager gets an ID token →
+- **Flows**: successful sign-up → Onboarding (F03); **2FA is optional**: accounts without 2FA go straight into the app
+  with no 2FA step; only when sign-in returns `twoFactorRequired` does the 2FA screen appear, with `challengeToken`
+  (expires after 5 minutes → back to Sign in); Google: Credential Manager gets an ID token →
   `/auth/google`; password reset done → back to Sign in with a message; send `deviceName` (device model).
 - **API**: §4.1 – `POST /auth/register`, `/auth/login`, `/auth/2fa/verify`, `/auth/google`, `/auth/forgot-password`,
   `/auth/reset-password`, `/auth/logout`.
 - **Rules & errors**: `EMAIL_TAKEN` under the e-mail field; `INVALID_CREDENTIALS` "Wrong e-mail or password";
   `ACCOUNT_LOCKED` (429) "Locked for 15 minutes"; `INVALID_CODE`; `GOOGLE_SIGN_IN_DISABLED`; forgot password always says
   "If the e-mail exists, a code was sent".
-- **Done when**: sign-up, sign-in, 2FA, forgot/reset password work against the real backend; reopening the app keeps
-  the user signed in; an expired refresh token leads to Sign in without loops.
-- **Tests**: sign-in ViewModel (normal, 2FA, errors), token store/clear in the repository.
+- **Done when**: sign-up, sign-in, 2FA, forgot/reset password work against the real backend; accounts without 2FA never
+  see the 2FA screen; reopening the app keeps the user signed in; an expired refresh token leads to Sign in without loops.
+- **Tests**: sign-in ViewModel (normal – no 2FA, with 2FA, errors), token store/clear in the repository.
 
 ### F03. Onboarding
 
-- **Screens** (3 steps, progress bar, step 3 skippable): (1) Choose the default currency (VND default, search ISO codes)
-  · (2) Create the first wallet (suggested name "Tiền mặt" (Cash), type, current balance with `AmountKeypad`) · (3)
-  Create a monthly budget (amount for all expenses).
-- **API**: `PATCH /me` (defaultCurrency), `POST /wallets`, `POST /budgets` (§4.2, §5.1, §7).
-- **Done when**: shown only once (DataStore flag + check that a wallet exists); finishing lands on a Home with data.
+- **Screens** (4 steps, progress bar; steps 3 and 4 skippable): (1) Choose the default currency (VND default, search ISO
+  codes) · (2) Create the first wallet (suggested name "Tiền mặt" (Cash), type, current balance with `AmountKeypad`) ·
+  (3) Create a monthly budget (amount for all expenses) · (4) **Protect your account – optional**: a short explanation
+  of two-step verification (a 6-digit code from Google Authenticator at each sign-in), two buttons **"Turn on now"**
+  (opens the F04 enable-2FA flow, then comes back) and **"Skip"** (equally prominent, no warning, never asked again).
+  Accounts signed in with Google see this step too.
+- **API**: `PATCH /me` (defaultCurrency), `POST /wallets`, `POST /budgets`, `/me/2fa/*` when "Turn on now" is chosen
+  (§4.2, §5.1, §7).
+- **Done when**: shown only once (DataStore flag + check that a wallet exists); skipping step 4 enters the app normally
+  with 2FA still off; finishing lands on a Home with data.
+- **Tests**: onboarding ViewModel (skip step 3, skip step 4, enable 2FA at step 4).
 
 ### F04. Profile, settings, security
 
 - **Settings screen**: profile card (name, e-mail, "Not verified" label) · Profile (full name, default currency,
   language, time zone, month start day 1–28) · E-mail verification (send code, enter code; 60-second countdown before
-  resending) · Password (change; Google-only accounts: "Set password" without the current one) · Two-step verification
-  (enable: show a QR code from `otpauthUri` + the `secret` to copy → enter a code → show the **10 one-time recovery
-  codes** with copy/save buttons and a required "I saved them" confirmation; disable: enter a code) · Signed-in devices
+  resending) · Password (change; Google-only accounts: "Set password" without the current one) · Two-step verification –
+  **optional, off by default** (a row showing "Off"/"On"; enable: show a QR code from `otpauthUri` + the `secret` to
+  copy → enter a code → show the **10 one-time recovery codes** with copy/save buttons and a required "I saved them"
+  confirmation; cancelling half-way leaves 2FA off; disable: enter a TOTP or recovery code, at any time) · A "Make your
+  account safer with two-step verification" card at the top of Settings while 2FA is off, with "Turn on" and "Later"
+  (hidden for 30 days, stored in DataStore) – it never blocks the user · Signed-in devices
   (list, mark this device, revoke one, "Sign out all other devices") · Notifications (F20) · Exchange rates (F11) · App
   lock (fingerprint/Face ID switch, relock after 1/5/15 minutes) · Hide balances by default · Appearance
   (light/dark/system) · Sign out · **Delete account** (warning, re-enter e-mail + password).
@@ -208,9 +218,11 @@ Root package `com.financemanage.mobile`; versions declared in `gradle/libs.versi
 - **Rules & errors**: `WRONG_PASSWORD`, `INVALID_CODE`, `RESEND_TOO_SOON` (429), `CONFIRMATION_MISMATCH`; successful
   account deletion → wipe local data, back to Welcome. App lock uses BiometricPrompt / LocalAuthentication
   (expect/actual) with the device passcode as fallback.
-- **Done when**: everything works against the real backend; after enabling 2FA, signing in again goes through the 2FA
-  screen; revoking another device signs it out at its next refresh.
-- **Tests**: 2FA ViewModel (setup → enable → recovery codes), account deletion (cache wiped).
+- **Done when**: everything works against the real backend; the whole app is usable without enabling 2FA; after
+  enabling 2FA, signing in again goes through the 2FA screen, and no longer after disabling it; revoking another device
+  signs it out at its next refresh.
+- **Tests**: 2FA ViewModel (setup → enable → recovery codes; cancel half-way; disable), suggestion card (hidden for 30
+  days), account deletion (cache wiped).
 
 ### F05. Wallets
 
