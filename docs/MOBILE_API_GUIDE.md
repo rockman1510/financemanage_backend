@@ -570,6 +570,9 @@ module backend và các mục 4–14 của tài liệu này.
 
 ## 17. Dùng tài liệu này với Claude Code CLI
 
+> Quy trình đầy đủ (chuẩn bị, `CLAUDE.md`, prompt cho từng đợt, prompt review/sửa lỗi, checklist phát hành):
+> [KMP_CLAUDE_CODE_WORKFLOW.md](KMP_CLAUDE_CODE_WORKFLOW.md). Phần dưới là bản rút gọn.
+
 1. Tạo repo app (ví dụ `finance-management-mobile`) và chép vào đó: `docs/MOBILE_API_GUIDE.md`,
    `docs/api/openapi.json` (giữ nguyên đường dẫn `docs/…`). Hoặc clone repo backend cạnh repo app và trỏ Claude tới đó.
 2. Chạy backend local (mục 1), mở terminal trong repo app, chạy `claude`.
