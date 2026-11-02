@@ -10,8 +10,8 @@ A single workflow for Claude Code CLI on your computer to build the **complete**
   after each one so you can check it.
 - **Part C** – the **blueprint** of every feature: screens, components, flows, API, rules, errors, done criteria.
 
-The app's API documentation: [MOBILE_API_GUIDE.md](MOBILE_API_GUIDE.md) (**API §n** = section n of that file, which is
-written in Vietnamese) and [api/openapi.json](api/openapi.json).
+The app's API documentation: [MOBILE_API_GUIDE.en.md](MOBILE_API_GUIDE.en.md) (**API §n** = section n of that file) and
+[api/openapi.json](api/openapi.json).
 
 ---
 
@@ -27,7 +27,7 @@ written in Vietnamese) and [api/openapi.json](api/openapi.json).
    git clone https://github.com/rockman1510/financemanage_backend.git
    git clone https://github.com/rockman1510/finance-management-mobile.git
    mkdir -p finance-management-mobile/docs/backend
-   cp financemanage_backend/docs/MOBILE_API_GUIDE.md financemanage_backend/docs/api/openapi.json \
+   cp financemanage_backend/docs/MOBILE_API_GUIDE.en.md financemanage_backend/docs/api/openapi.json \
       financemanage_backend/docs/KMP_APP_WORKFLOW.en.md finance-management-mobile/docs/backend/
    ```
 
@@ -57,8 +57,8 @@ written with Kotlin Multiplatform + Compose Multiplatform, connected to an exist
 
 DOCUMENTS (read them fully before starting, look things up again whenever needed, never guess the API):
 - docs/backend/KMP_APP_WORKFLOW.en.md – Part C is the BLUEPRINT of every feature (C0 shared foundation, F01–F22).
-- docs/backend/MOBILE_API_GUIDE.md – how to use the API, business rules, error codes, sample JSON ("API §n" =
-  section n; the guide is in Vietnamese).
+- docs/backend/MOBILE_API_GUIDE.en.md – how to use the API, business rules, error codes, sample JSON ("API §n" =
+  section n).
 - docs/backend/openapi.json – the exact request/response types.
 
 The app's UI language is Vietnamese: every user-facing string from the blueprint goes into resources in Vietnamese
@@ -463,10 +463,11 @@ Open a **separate Claude Code session** in the `financemanage_backend` folder an
 The mobile app needs GET /api/v1/home returning in one request: total wallet balance converted, this and last month's
 income/expense, the 3 budgets with the highest %, bills due in the next 7 days, the closest saving goal, the 5 latest
 transactions and the unread notification count. Follow the existing modular-monolith architecture, add integration
-tests, update docs/MOBILE_API_GUIDE.md, re-export docs/api/openapi.json, run ./gradlew build.
+tests, update docs/MOBILE_API_GUIDE.md and docs/MOBILE_API_GUIDE.en.md, re-export docs/api/openapi.json, run
+./gradlew build.
 ```
 
-Once the backend is done: copy `MOBILE_API_GUIDE.md` and `openapi.json` again into the app's `docs/backend/` and tell
+Once the backend is done: copy `MOBILE_API_GUIDE.en.md` and `openapi.json` again into the app's `docs/backend/` and tell
 Claude (app session): "The API documents changed; compare them with the previous version using git diff and update the
 app."
 

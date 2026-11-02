@@ -437,8 +437,8 @@ Mở **phiên Claude Code riêng** trong thư mục `financemanage_backend` và 
 ```text
 App mobile cần GET /api/v1/home trả trong một request: tổng ví quy đổi, thu/chi tháng này và tháng trước, 3 ngân sách
 có % cao nhất, hoá đơn 7 ngày tới, mục tiêu tiết kiệm gần nhất, 5 giao dịch gần nhất, số thông báo chưa đọc. Làm theo
-kiến trúc modular monolith hiện có, thêm test integration, cập nhật docs/MOBILE_API_GUIDE.md, xuất lại
-docs/api/openapi.json, chạy ./gradlew build.
+kiến trúc modular monolith hiện có, thêm test integration, cập nhật docs/MOBILE_API_GUIDE.md và
+docs/MOBILE_API_GUIDE.en.md, xuất lại docs/api/openapi.json, chạy ./gradlew build.
 ```
 
 Sau khi backend xong: chép lại `MOBILE_API_GUIDE.md` và `openapi.json` sang `docs/backend/` của app rồi bảo Claude

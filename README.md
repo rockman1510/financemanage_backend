@@ -7,7 +7,7 @@
 |---|---|
 | [`backend/`](backend) | Java 21 · Spring Boot 4 · Spring Modulith (modular monolith) · PostgreSQL · Flyway |
 | [`mobile/`](mobile) | React Native · Expo SDK 57 · Expo Router · TanStack Query · Zustand · React Hook Form + Zod |
-| [`docs/`](docs) | Kế hoạch kiến trúc, [phạm vi tính năng mở rộng](docs/FEATURE_SCOPE.md), [hướng dẫn dùng API cho app mobile](docs/MOBILE_API_GUIDE.md) + [đặc tả OpenAPI](docs/api/openapi.json), workflow + blueprint xây app KMP bằng Claude Code CLI ([tiếng Việt](docs/KMP_APP_WORKFLOW.vi.md), [English](docs/KMP_APP_WORKFLOW.en.md)) |
+| [`docs/`](docs) | Kế hoạch kiến trúc, [phạm vi tính năng mở rộng](docs/FEATURE_SCOPE.md), hướng dẫn dùng API cho app mobile ([tiếng Việt](docs/MOBILE_API_GUIDE.md), [English](docs/MOBILE_API_GUIDE.en.md)) + [đặc tả OpenAPI](docs/api/openapi.json), workflow + blueprint xây app KMP bằng Claude Code CLI ([tiếng Việt](docs/KMP_APP_WORKFLOW.vi.md), [English](docs/KMP_APP_WORKFLOW.en.md)) |
 | `docker-compose.yml` | PostgreSQL + backend để chạy local |
 | `docker-compose.prod.yml`, `deploy/`, `.env.prod.example` | Triển khai production trên một VPS: Caddy (HTTPS), Redis, backup mã hoá ra object storage, Prometheus – xem [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
 | `.github/workflows/ci.yml` | CI: build/test backend, dựng image Docker, typecheck/lint/test mobile |
