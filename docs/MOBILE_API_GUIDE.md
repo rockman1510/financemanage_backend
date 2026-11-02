@@ -1,5 +1,8 @@
 # Hướng dẫn dùng API cho app mobile (KMP – Android & iOS)
 
+> Bản tiếng Anh: [MOBILE_API_GUIDE.en.md](MOBILE_API_GUIDE.en.md). Hai bản dùng cùng số mục, nên "API §n" trỏ tới cùng
+> nội dung ở cả hai file.
+
 Tài liệu này dành cho người (và Claude Code) xây app **Kotlin Multiplatform** gọi backend Finance Manage. Nó nói *cách
 dùng* API: luồng xác thực, quy ước, cách xử lý tiền và trạng thái bất đồng bộ, từng tính năng và mã lỗi.
 
@@ -481,7 +484,7 @@ Tham số chung: `from`, `to` (mặc định tháng hiện tại, tối đa 10 n
 `type`: `DEPOSIT_MATURING_SOON`, `DEPOSIT_MATURED`, `INSTALLMENT_DUE_SOON`, `INSTALLMENT_OVERDUE`, `LOAN_PAID_OFF`,
 `BUDGET_WARNING`, `BUDGET_EXCEEDED`, `BILL_DUE_SOON`, `BILL_OVERDUE`, `BILL_PAYMENT_FAILED`, `DAILY_REMINDER` (nhắc ghi
 chép khi cả ngày chưa ghi gì, theo giờ người dùng chọn), `SAVING_GOAL_MILESTONE`. Dùng `referenceType` + `referenceId`
-để điều hướng khi bấm thông báo (ví dụ mở hoá đơn, mục tiêu, khoản vay).
+để điều hướng khi bấm thông báo (`BILL`, `BUDGET`, `SAVING_GOAL`, `DEPOSIT`, `LOAN`; `DAILY_REMINDER` không có tham chiếu).
 
 ### 14.1 Push qua FCM cho app KMP
 
@@ -569,6 +572,9 @@ module backend và các mục 4–14 của tài liệu này.
 | CORS | Không cần cho app native | – |
 
 ## 17. Dùng tài liệu này với Claude Code CLI
+
+> Workflow đầy đủ – một prompt chính + blueprint chi tiết của mọi tính năng app (F01–F22):
+> [KMP_APP_WORKFLOW.vi.md](KMP_APP_WORKFLOW.vi.md) · [English](KMP_APP_WORKFLOW.en.md). Phần dưới là bản rút gọn.
 
 1. Tạo repo app (ví dụ `finance-management-mobile`) và chép vào đó: `docs/MOBILE_API_GUIDE.md`,
    `docs/api/openapi.json` (giữ nguyên đường dẫn `docs/…`). Hoặc clone repo backend cạnh repo app và trỏ Claude tới đó.
